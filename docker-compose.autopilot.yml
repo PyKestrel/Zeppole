@@ -18,6 +18,8 @@ services:
   emulator-bridge:
     env_file:
       - zeppole.autopilot.env
+    devices:
+      - /dev/kvm:/dev/kvm
 
   worker-bootstrap:
     image: node:22-alpine

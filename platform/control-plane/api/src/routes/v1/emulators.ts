@@ -5,7 +5,7 @@ import {
   bridgeDeploy,
   bridgeStop,
   emulatorBridgeConfigured,
-  emulatorBridgeKvmAvailable,
+  emulatorBridgeHealth,
 } from "../../lib/emulatorBridge.js";
 import { can } from "../../lib/roles.js";
 
@@ -47,9 +47,13 @@ export const emulatorsPlugin: FastifyPluginAsync = async (app) => {
       }
       const emulators = await app.prisma.emulatorInstance.findMany({ orderBy: { createdAt: "desc" } });
       const bridgeConfigured = emulatorBridgeConfigured();
+      const bridgeHealth = bridgeConfigured ? await emulatorBridgeHealth() : null;
       return {
         bridgeConfigured,
-        kvmAvailable: bridgeConfigured ? await emulatorBridgeKvmAvailable() : false,
+        kvmAvailable: bridgeHealth?.kvmAvailable ?? false,
+        kvmDetail: bridgeHealth?.detail,
+        kvmError: bridgeHealth?.lastError,
+        bridgeReachable: bridgeHealth?.reachable ?? false,
         emulators,
       };
     },
@@ -86,10 +90,13 @@ export const emulatorsPlugin: FastifyPluginAsync = async (app) => {
         });
         return;
       }
-      if (!(await emulatorBridgeKvmAvailable())) {
+      const health = await emulatorBridgeHealth();
+      if (!health.kvmAvailable) {
         reply.code(503).send({
           error:
-            "Docker host has no KVM for budtmo/docker-android (/dev/kvm). Use a Linux host with KVM passed into the emulator-bridge container, or register an external noVNC URL (mode=manual). Docker Desktop on Windows/macOS cannot run this image.",
+            health.detail ??
+            "Docker host has no KVM for budtmo/docker-android (/dev/kvm). Use a Linux host with KVM, merge docker-compose.kvm.yml, or register an external noVNC URL.",
+          kvmError: health.lastError,
         });
         return;
       }

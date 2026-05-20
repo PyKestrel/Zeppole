@@ -9,25 +9,66 @@ export function emulatorBridgeConfigured(): boolean {
   return Boolean(url && token);
 }
 
-export async function emulatorBridgeKvmAvailable(): Promise<boolean> {
-  if (!emulatorBridgeConfigured()) return false;
+export type EmulatorBridgeHealth = {
+  reachable: boolean;
+  kvmAvailable: boolean;
+  detail?: string;
+  lastError?: string;
+};
+
+export async function emulatorBridgeHealth(): Promise<EmulatorBridgeHealth> {
+  if (!emulatorBridgeConfigured()) {
+    return { reachable: false, kvmAvailable: false, detail: "Bridge URL/token not configured on API" };
+  }
   const base = process.env.ZEPPOLE_EMULATOR_BRIDGE_URL!.replace(/\/$/, "");
   const token = process.env.ZEPPOLE_EMULATOR_BRIDGE_TOKEN!;
   const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), 90_000);
+  const timer = setTimeout(() => ac.abort(), 120_000);
   try {
     const res = await fetch(`${base}/health`, {
       headers: { Authorization: `Bearer ${token}` },
       signal: ac.signal,
     });
-    if (!res.ok) return false;
-    const data = (await res.json()) as { kvmAvailable?: boolean };
-    return Boolean(data.kvmAvailable);
-  } catch {
-    return false;
+    const text = await res.text();
+    let data: { kvmAvailable?: boolean; kvm?: { detail?: string; lastError?: string } } = {};
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch {
+      return {
+        reachable: false,
+        kvmAvailable: false,
+        detail: `Bridge /health returned non-JSON (${res.status})`,
+        lastError: text.slice(0, 200),
+      };
+    }
+    if (!res.ok) {
+      return {
+        reachable: false,
+        kvmAvailable: false,
+        detail: `Bridge /health HTTP ${res.status}`,
+        lastError: data.kvm?.lastError ?? text.slice(0, 200),
+      };
+    }
+    return {
+      reachable: true,
+      kvmAvailable: Boolean(data.kvmAvailable),
+      detail: data.kvm?.detail,
+      lastError: data.kvm?.lastError,
+    };
+  } catch (e) {
+    return {
+      reachable: false,
+      kvmAvailable: false,
+      detail: "API could not reach emulator-bridge /health",
+      lastError: (e as Error).message,
+    };
   } finally {
     clearTimeout(timer);
   }
+}
+
+export async function emulatorBridgeKvmAvailable(): Promise<boolean> {
+  return (await emulatorBridgeHealth()).kvmAvailable;
 }
 
 export type BridgeDeployRequest = {

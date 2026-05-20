@@ -8,6 +8,9 @@ import type { EmulatorInstance } from "../types";
 export function EmulatorsPage() {
   const [bridgeConfigured, setBridgeConfigured] = useState(false);
   const [kvmAvailable, setKvmAvailable] = useState(false);
+  const [kvmDetail, setKvmDetail] = useState<string | null>(null);
+  const [kvmError, setKvmError] = useState<string | null>(null);
+  const [bridgeReachable, setBridgeReachable] = useState(true);
   const [list, setList] = useState<EmulatorInstance[]>([]);
   const [toast, setToast] = useState<{ msg: string; variant: "success" | "error" } | null>(null);
 
@@ -21,12 +24,20 @@ export function EmulatorsPage() {
   const [manAppium, setManAppium] = useState("");
 
   const load = useCallback((opts?: { silent?: boolean }) => {
-    return api<{ bridgeConfigured: boolean; kvmAvailable?: boolean; emulators: EmulatorInstance[] }>(
-      "/emulators",
-    )
+    return api<{
+      bridgeConfigured: boolean;
+      kvmAvailable?: boolean;
+      kvmDetail?: string;
+      kvmError?: string;
+      bridgeReachable?: boolean;
+      emulators: EmulatorInstance[];
+    }>("/emulators")
       .then((r) => {
         setBridgeConfigured(r.bridgeConfigured);
         setKvmAvailable(Boolean(r.kvmAvailable));
+        setKvmDetail(r.kvmDetail ?? null);
+        setKvmError(r.kvmError ?? null);
+        setBridgeReachable(r.bridgeReachable !== false);
         setList(r.emulators);
         return r.emulators;
       })
@@ -37,6 +48,9 @@ export function EmulatorsPage() {
         }
         setBridgeConfigured(false);
         setKvmAvailable(false);
+        setKvmDetail(null);
+        setKvmError(null);
+        setBridgeReachable(false);
         setList([]);
         return [] as EmulatorInstance[];
       });
@@ -150,17 +164,32 @@ export function EmulatorsPage() {
           <strong>register</strong> running emulators below (paste noVNC and Appium URLs). See{" "}
           <code>platform/device-pool/emulator-bridge/README.md</code> to enable one-click deploy.
         </div>
+      ) : !bridgeReachable ? (
+        <div className="callout callout--warn" role="status">
+          <strong>Cannot reach emulator-bridge.</strong> {kvmDetail ?? "Check that the bridge container is running."}
+          {kvmError ? (
+            <div className="small muted" style={{ marginTop: "0.5rem" }}>
+              {kvmError}
+            </div>
+          ) : null}
+        </div>
       ) : kvmAvailable ? (
         <div className="callout callout--neutral" role="status">
-          <strong>Docker bridge is active.</strong> New containers publish random host ports; open the display link from
-          a browser that can reach the host configured for the bridge (<code>PUBLIC_HOST</code>).
+          <strong>Docker bridge is active.</strong> {kvmDetail ? <span> {kvmDetail}</span> : null} New containers publish
+          random host ports; open the display link from a browser that can reach{" "}
+          <code>PUBLIC_HOST</code>.
         </div>
       ) : (
         <div className="callout callout--warn" role="status">
-          <strong>KVM not detected for Docker deploy.</strong> budtmo/docker-android needs <code>/dev/kvm</code> on the
-          machine where <strong>Docker</strong> runs (the emulator-bridge talks to that daemon). If your VM has KVM, run
-          Zeppole there and add <code>docker-compose.kvm.yml</code> to your compose command, or use{" "}
-          <strong>Register URLs</strong> for an emulator you start elsewhere.
+          <strong>KVM not detected for Docker deploy.</strong> {kvmDetail ?? "budtmo/docker-android needs /dev/kvm on the Docker host."}{" "}
+          Rebuild and recreate <code>emulator-bridge</code> after pulling latest Zeppole. On your VM run:{" "}
+          <code>ls -l /dev/kvm</code> and{" "}
+          <code>docker compose ... up -d --build emulator-bridge api web</code>. Or use <strong>Register URLs</strong>.
+          {kvmError ? (
+            <div className="small muted" style={{ marginTop: "0.5rem" }}>
+              Probe: {kvmError}
+            </div>
+          ) : null}
         </div>
       )}
 

@@ -36,8 +36,20 @@ async function docker(args: string[], timeoutMs = DOCKER_TIMEOUT_MS): Promise<{ 
   }
 }
 
-let kvmProbeCache: { at: number; value: boolean } | null = null;
+let kvmProbeCache: { at: number; result: KvmProbeResult } | null = null;
 const KVM_PROBE_CACHE_MS = 60_000;
+
+type KvmProbeResult = {
+  ok: boolean;
+  visibleInBridge: boolean;
+  detail: string;
+  lastError?: string;
+};
+
+function assumeKvmEnabled(): boolean {
+  const v = process.env.EMULATOR_ASSUME_KVM?.trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
+}
 
 async function kvmVisibleInBridge(): Promise<boolean> {
   try {
@@ -48,28 +60,73 @@ async function kvmVisibleInBridge(): Promise<boolean> {
   }
 }
 
-/** True when the Docker daemon (via socket) can start containers with --device /dev/kvm. */
-async function kvmAvailableOnDockerHost(): Promise<boolean> {
-  if (kvmProbeCache && Date.now() - kvmProbeCache.at < KVM_PROBE_CACHE_MS) {
-    return kvmProbeCache.value;
+/** True when the Docker daemon (via socket) can use /dev/kvm for emulator containers. */
+async function probeKvm(force = false): Promise<KvmProbeResult> {
+  if (!force && kvmProbeCache && Date.now() - kvmProbeCache.at < KVM_PROBE_CACHE_MS) {
+    return kvmProbeCache.result;
   }
-  if (await kvmVisibleInBridge()) {
-    kvmProbeCache = { at: Date.now(), value: true };
-    return true;
+
+  const visibleInBridge = await kvmVisibleInBridge();
+  if (visibleInBridge) {
+    const result: KvmProbeResult = {
+      ok: true,
+      visibleInBridge: true,
+      detail: "/dev/kvm is mounted in emulator-bridge",
+    };
+    kvmProbeCache = { at: Date.now(), result };
+    return result;
   }
-  try {
-    await docker(["run", "--rm", "--device", "/dev/kvm", "busybox", "test", "-e", "/dev/kvm"], 60_000);
-    kvmProbeCache = { at: Date.now(), value: true };
-    return true;
-  } catch {
-    kvmProbeCache = { at: Date.now(), value: false };
-    return false;
+
+  if (assumeKvmEnabled()) {
+    const result: KvmProbeResult = {
+      ok: true,
+      visibleInBridge: false,
+      detail: "EMULATOR_ASSUME_KVM is set",
+    };
+    kvmProbeCache = { at: Date.now(), result };
+    return result;
   }
+
+  const attempts: { args: string[]; label: string }[] = [
+    {
+      label: "docker run --device /dev/kvm",
+      args: ["run", "--rm", "--device", "/dev/kvm", "busybox:1.36", "test", "-e", "/dev/kvm"],
+    },
+    {
+      label: "docker run -v /dev/kvm:/dev/kvm:ro",
+      args: ["run", "--rm", "-v", "/dev/kvm:/dev/kvm:ro", "busybox:1.36", "test", "-e", "/dev/kvm"],
+    },
+  ];
+
+  let lastError = "";
+  for (const attempt of attempts) {
+    try {
+      await docker(attempt.args, 90_000);
+      const result: KvmProbeResult = {
+        ok: true,
+        visibleInBridge: false,
+        detail: `KVM OK (${attempt.label})`,
+      };
+      kvmProbeCache = { at: Date.now(), result };
+      return result;
+    } catch (e) {
+      const err = e as Error & { stderr?: string };
+      lastError = [attempt.label, err.message, err.stderr?.trim()].filter(Boolean).join(" — ");
+    }
+  }
+
+  const result: KvmProbeResult = {
+    ok: false,
+    visibleInBridge: false,
+    detail: "KVM probe failed on Docker host",
+    lastError: lastError || "unknown",
+  };
+  kvmProbeCache = { at: Date.now(), result };
+  return result;
 }
 
-/** docker-android requires /dev/kvm inside the emulator container (pass from Docker host). */
 async function canPassKvmToEmulator(): Promise<boolean> {
-  return kvmAvailableOnDockerHost();
+  return (await probeKvm()).ok;
 }
 
 const KVM_REQUIRED_MSG =
@@ -125,11 +182,15 @@ app.addHook("preHandler", async (request, reply) => {
   }
 });
 
-app.get("/health", async () => ({
-  status: "ok",
-  service: "zeppole-emulator-bridge",
-  kvmAvailable: await canPassKvmToEmulator(),
-}));
+app.get("/health", async () => {
+  const kvm = await probeKvm(true);
+  return {
+    status: "ok",
+    service: "zeppole-emulator-bridge",
+    kvmAvailable: kvm.ok,
+    kvm,
+  };
+});
 
 app.post<{ Body: { containerName: string; emulatorDevice: string; image?: string } }>(
   "/v1/deploy",
@@ -283,15 +344,16 @@ async function main() {
     app.log.error("Set BRIDGE_TOKEN (min 8 chars) before starting.");
     process.exit(1);
   }
-  const kvmInBridge = await kvmVisibleInBridge();
-  const kvmOnHost = await kvmAvailableOnDockerHost();
-  app.log.info(
-    { kvmVisibleInBridge: kvmInBridge, kvmOnDockerHost: kvmOnHost, dockerAndroidDeployAllowed: kvmOnHost },
-    "KVM configuration at startup",
+  const kvm = await probeKvm(true);
+  console.info(
+    `[zeppole-emulator-bridge] kvmAvailable=${kvm.ok} visibleInBridge=${kvm.visibleInBridge} detail=${kvm.detail}`,
   );
-  if (!kvm) {
+  if (kvm.lastError) {
+    console.info(`[zeppole-emulator-bridge] kvmProbeError=${kvm.lastError}`);
+  }
+  if (!kvm.ok) {
     app.log.warn(
-      "Deploy will be rejected until /dev/kvm is mounted into this bridge container (see emulator-bridge README).",
+      "KVM not available for docker-android deploy. Merge docker-compose.kvm.yml or set EMULATOR_ASSUME_KVM=true if you verified KVM manually.",
     );
   }
   await app.listen({ port: PORT, host: "0.0.0.0" });
