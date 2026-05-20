@@ -157,10 +157,10 @@ export function EmulatorsPage() {
         </div>
       ) : (
         <div className="callout callout--warn" role="status">
-          <strong>KVM is not available on this Docker host.</strong> budtmo/docker-android needs <code>/dev/kvm</code>;
-          without it the noVNC page shows only the DOCKERANDROID splash and the emulator never boots. On Windows/macOS
-          Docker Desktop, use <strong>Register URLs</strong> for an emulator on a Linux VM (Proxmox, cloud, etc.) or run
-          Zeppole on a Linux machine with KVM.
+          <strong>KVM not detected for Docker deploy.</strong> budtmo/docker-android needs <code>/dev/kvm</code> on the
+          machine where <strong>Docker</strong> runs (the emulator-bridge talks to that daemon). If your VM has KVM, run
+          Zeppole there and add <code>docker-compose.kvm.yml</code> to your compose command, or use{" "}
+          <strong>Register URLs</strong> for an emulator you start elsewhere.
         </div>
       )}
 

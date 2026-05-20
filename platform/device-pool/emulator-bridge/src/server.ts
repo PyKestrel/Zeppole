@@ -36,7 +36,10 @@ async function docker(args: string[], timeoutMs = DOCKER_TIMEOUT_MS): Promise<{ 
   }
 }
 
-async function kvmAvailableInBridge(): Promise<boolean> {
+let kvmProbeCache: { at: number; value: boolean } | null = null;
+const KVM_PROBE_CACHE_MS = 60_000;
+
+async function kvmVisibleInBridge(): Promise<boolean> {
   try {
     await access("/dev/kvm");
     return true;
@@ -45,15 +48,34 @@ async function kvmAvailableInBridge(): Promise<boolean> {
   }
 }
 
-/** docker-android requires /dev/kvm inside the emulator container (pass from host via bridge mount). */
+/** True when the Docker daemon (via socket) can start containers with --device /dev/kvm. */
+async function kvmAvailableOnDockerHost(): Promise<boolean> {
+  if (kvmProbeCache && Date.now() - kvmProbeCache.at < KVM_PROBE_CACHE_MS) {
+    return kvmProbeCache.value;
+  }
+  if (await kvmVisibleInBridge()) {
+    kvmProbeCache = { at: Date.now(), value: true };
+    return true;
+  }
+  try {
+    await docker(["run", "--rm", "--device", "/dev/kvm", "busybox", "test", "-e", "/dev/kvm"], 60_000);
+    kvmProbeCache = { at: Date.now(), value: true };
+    return true;
+  } catch {
+    kvmProbeCache = { at: Date.now(), value: false };
+    return false;
+  }
+}
+
+/** docker-android requires /dev/kvm inside the emulator container (pass from Docker host). */
 async function canPassKvmToEmulator(): Promise<boolean> {
-  return kvmAvailableInBridge();
+  return kvmAvailableOnDockerHost();
 }
 
 const KVM_REQUIRED_MSG =
-  "This host cannot run budtmo/docker-android: /dev/kvm is not available. The noVNC page will show only the splash screen. " +
-  "Use a Linux Docker host with KVM (mount /dev/kvm into the emulator-bridge service) or register an external noVNC URL instead. " +
-  "Docker Desktop on Windows/macOS does not expose KVM to containers.";
+  "budtmo/docker-android needs /dev/kvm on the Docker host. The noVNC page will show only the splash screen without it. " +
+  "On a Linux VM with KVM, ensure Docker runs on that VM and merge docker-compose.kvm.yml (mounts /dev/kvm into emulator-bridge), " +
+  "or register an external noVNC URL. Docker Desktop on Windows/macOS cannot pass KVM to containers.";
 
 function parseHostPort(dockerPortLine: string): string {
   const line = dockerPortLine.trim().split("\n").pop() ?? "";
@@ -261,8 +283,12 @@ async function main() {
     app.log.error("Set BRIDGE_TOKEN (min 8 chars) before starting.");
     process.exit(1);
   }
-  const kvm = await kvmAvailableInBridge();
-  app.log.info({ kvmVisibleInBridge: kvm, dockerAndroidDeployAllowed: kvm }, "KVM configuration at startup");
+  const kvmInBridge = await kvmVisibleInBridge();
+  const kvmOnHost = await kvmAvailableOnDockerHost();
+  app.log.info(
+    { kvmVisibleInBridge: kvmInBridge, kvmOnDockerHost: kvmOnHost, dockerAndroidDeployAllowed: kvmOnHost },
+    "KVM configuration at startup",
+  );
   if (!kvm) {
     app.log.warn(
       "Deploy will be rejected until /dev/kvm is mounted into this bridge container (see emulator-bridge README).",

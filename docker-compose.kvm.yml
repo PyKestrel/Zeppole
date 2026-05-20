@@ -1,0 +1,9 @@
+# Merge on Linux hosts where /dev/kvm exists (nested virt enabled):
+#   docker compose -f docker-compose.yml -f docker-compose.autopilot.yml -f docker-compose.kvm.yml --profile emulators up -d
+#
+# Exposes KVM to emulator-bridge so health checks and deploy match the VM capability.
+
+services:
+  emulator-bridge:
+    devices:
+      - /dev/kvm:/dev/kvm

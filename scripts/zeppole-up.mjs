@@ -51,13 +51,24 @@ function writeEnvIfMissing() {
   return true;
 }
 
+function hostHasKvm() {
+  try {
+    fs.accessSync("/dev/kvm");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function composeArgs(extra) {
+  const files = ["docker-compose.yml", "docker-compose.autopilot.yml"];
+  if (hostHasKvm()) {
+    files.push("docker-compose.kvm.yml");
+    console.info("Host has /dev/kvm — including docker-compose.kvm.yml for emulator-bridge");
+  }
   return [
     "compose",
-    "-f",
-    "docker-compose.yml",
-    "-f",
-    "docker-compose.autopilot.yml",
+    ...files.flatMap((f) => ["-f", f]),
     "--env-file",
     "zeppole.autopilot.env",
     "--profile",

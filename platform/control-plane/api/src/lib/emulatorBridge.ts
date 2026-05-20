@@ -14,7 +14,7 @@ export async function emulatorBridgeKvmAvailable(): Promise<boolean> {
   const base = process.env.ZEPPOLE_EMULATOR_BRIDGE_URL!.replace(/\/$/, "");
   const token = process.env.ZEPPOLE_EMULATOR_BRIDGE_TOKEN!;
   const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), 10_000);
+  const timer = setTimeout(() => ac.abort(), 90_000);
   try {
     const res = await fetch(`${base}/health`, {
       headers: { Authorization: `Bearer ${token}` },

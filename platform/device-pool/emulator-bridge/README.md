@@ -39,22 +39,17 @@ Expose the published emulator ports from the **Docker host** to your workstation
 
 ## Linux / KVM
 
-KVM is **opt-in**. The bridge only passes `--device /dev/kvm` when **both** are true:
+The bridge checks whether the **Docker host** can pass `/dev/kvm` into containers (probe via `docker run --device /dev/kvm`, or `/dev/kvm` mounted into this service).
 
-1. `EMULATOR_USE_KVM=true`
-2. `/dev/kvm` is visible inside the bridge container (mount it from the host).
+On a Linux VM with KVM, merge from the repo root:
 
-Example for a Linux lab host:
-
-```yaml
-emulator-bridge:
-  environment:
-    EMULATOR_USE_KVM: "true"
-  devices:
-    - /dev/kvm:/dev/kvm
+```bash
+docker compose -f docker-compose.yml -f docker-compose.autopilot.yml -f docker-compose.kvm.yml --profile emulators up -d --build
 ```
 
-On **Docker Desktop (Windows/macOS)** leave `EMULATOR_USE_KVM` unset/false. Older bridge versions always added KVM on Linux and could leave emulator containers stuck in `Created` with `no such file or directory` for `/dev/kvm`.
+`docker-compose.kvm.yml` mounts `/dev/kvm` into `emulator-bridge`. Without it, the UI may show “KVM not detected” even when the VM has KVM, because the bridge container could not see the device.
+
+On **Docker Desktop (Windows/macOS)** KVM is not available to containers; use **Register URLs** in the UI instead.
 
 ## Security
 
