@@ -1,0 +1,9 @@
+
+FullName
+--------
+C:\Users\atorres\projects\zeppole\platform
+C:\Users\atorres\projects\zeppole\dir-list.txt
+C:\Users\atorres\projects\zeppole\shell-out.txt
+C:\Users\atorres\projects\zeppole\platform\device-pool
+C:\Users\atorres\projects\zeppole\platform\device-pool\bootstrap-source
+

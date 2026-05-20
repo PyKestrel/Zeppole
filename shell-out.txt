@@ -1,0 +1,2 @@
+PWD=C:\Users\atorres\projects\zeppole
+git version 2.48.1.windows.1

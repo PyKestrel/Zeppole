@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install
+        run: npm install
+
+      - name: Telemetry guard
+        run: npm run check:telemetry
+
+      - name: Generate Prisma client
+        working-directory: platform/control-plane/api
+        run: npx prisma generate
+
+      - name: Test
+        run: npm run test
+
+      - name: Build workspaces
+        run: npm run build

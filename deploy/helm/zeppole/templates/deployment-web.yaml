@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zeppole-web
+  labels:
+    app.kubernetes.io/name: zeppole
+    app.kubernetes.io/component: web
+spec:
+  replicas: {{ .Values.web.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: zeppole
+      app.kubernetes.io/component: web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: zeppole
+        app.kubernetes.io/component: web
+    spec:
+      containers:
+        - name: web
+          image: "{{ .Values.global.imageRegistry }}/{{ .Values.global.imageOrg }}/{{ .Values.web.image }}:{{ .Values.web.tag }}"
+          ports:
+            - containerPort: 80

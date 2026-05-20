@@ -1,0 +1,53 @@
+# Autopilot overlay — merge with docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.autopilot.yml --profile emulators --profile with-worker up -d
+#
+# Use `node scripts/zeppole-up.mjs` instead (generates secrets and runs the correct compose command).
+# Services below load `zeppole.autopilot.env` so secrets are not lost to empty ${VAR} interpolation on Windows.
+
+volumes:
+  zeppole-runtime:
+    name: zeppole_shared_runtime
+
+services:
+  api:
+    env_file:
+      - zeppole.autopilot.env
+    environment:
+      ZEPPOLE_EMULATOR_BRIDGE_URL: http://emulator-bridge:9100
+
+  emulator-bridge:
+    env_file:
+      - zeppole.autopilot.env
+
+  worker-bootstrap:
+    image: node:22-alpine
+    restart: "no"
+    profiles: ["with-worker"]
+    env_file:
+      - zeppole.autopilot.env
+    environment:
+      PREPARE_API_BASE: http://api:4000
+      TOKEN_PATH: /runtime/device.token
+      ZEPPOLE_AUTOMATION_DEVICE_NAME: ${ZEPPOLE_AUTOMATION_DEVICE_NAME:-Zeppole automation worker}
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes:
+      - zeppole-runtime:/runtime
+      - ./scripts/docker/prepare-worker.mjs:/scripts/prepare-worker.mjs:ro
+    command: ["node", "/scripts/prepare-worker.mjs"]
+
+  worker:
+    profiles: ["with-worker"]
+    env_file:
+      - zeppole.autopilot.env
+    environment:
+      ZEPPOLE_API_URL: http://api:4000/api/v1
+      ZEPPOLE_DEVICE_TOKEN_FILE: /runtime/device.token
+    volumes:
+      - zeppole-runtime:/runtime:ro
+    depends_on:
+      api:
+        condition: service_healthy
+      worker-bootstrap:
+        condition: service_completed_successfully

@@ -1,0 +1,20 @@
+{
+  "name": "zeppole",
+  "private": true,
+  "description": "Zeppole — self-hosted Android UI testing platform",
+  "scripts": {
+    "check:telemetry": "node scripts/check-no-telemetry.mjs",
+    "test": "npm run test -w @zeppole/api -w @zeppole/worker --if-present",
+    "build": "npm run build -w @zeppole/api -w @zeppole/web -w @zeppole/worker -w @zeppole/emulator-bridge --if-present",
+    "zeppole:up": "node scripts/zeppole-up.mjs"
+  },
+  "workspaces": [
+    "platform/control-plane/api",
+    "platform/control-plane/web",
+    "platform/execution-workers/worker",
+    "platform/device-pool/emulator-bridge"
+  ],
+  "engines": {
+    "node": ">=20"
+  }
+}

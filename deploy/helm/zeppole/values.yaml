@@ -1,0 +1,33 @@
+global:
+  imageRegistry: ghcr.io
+  imageOrg: your-org
+
+api:
+  image: zeppole-api
+  tag: "0.1.0"
+  replicas: 1
+  resources: {}
+
+web:
+  image: zeppole-web
+  tag: "0.1.0"
+  replicas: 1
+
+worker:
+  enabled: false
+  image: zeppole-worker
+  tag: "0.1.0"
+
+postgresql:
+  enabled: true
+  auth:
+    username: zeppole
+    password: change-me
+    database: zeppole
+
+ingress:
+  enabled: false
+  host: zeppole.example.com
+
+secrets:
+  jwtSecret: change-me

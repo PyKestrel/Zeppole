@@ -1,0 +1,16 @@
+Zeppole
+Copyright 2026 Zeppole contributors.
+
+This product includes software developed for Android emulation and automation
+tooling. A vendor snapshot of third-party source used as bootstrap for the
+device pool lives under:
+
+  platform/device-pool/bootstrap-source/
+
+That snapshot was derived from open-source projects released under the Apache
+License, Version 2.0. Telemetry, Google Forms, and user-behavior analytics
+have been removed from the Zeppole redistribution. See the file LICENSE in this
+repository for Zeppole-authored components.
+
+Third-party notices for bundled dependencies are reproduced in the respective
+package manifests (npm, Python requirements where applicable).

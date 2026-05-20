@@ -1,0 +1,18 @@
+node_modules/
+dist/
+build/
+.env
+.env.*
+!.env.example
+zeppole.autopilot.env
+*.log
+coverage/
+.turbo/
+.DS_Store
+*.tsbuildinfo
+prisma/*.db
+prisma/*.db-journal
+platform/control-plane/api/generated/
+
+# Vendor snapshot was cloned with its own .git; exclude nested repo metadata for Zeppole monorepo.
+platform/device-pool/bootstrap-source/.git/

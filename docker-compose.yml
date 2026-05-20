@@ -1,0 +1,96 @@
+# Zeppole local / lab stack: Postgres, API, Web (nginx), execution worker.
+# Optional Android emulator deploy from UI (profile `emulators`).
+#
+# One-command autopilot (secrets + admin + worker token + emulator bridge + worker):
+#   npm run zeppole:up
+# See README.md "One-command autopilot".
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: zeppole
+      POSTGRES_PASSWORD: zeppole
+      POSTGRES_DB: zeppole
+    volumes:
+      - zeppole-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zeppole"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  api:
+    build:
+      context: ./platform/control-plane/api
+    environment:
+      DATABASE_URL: postgresql://zeppole:zeppole@postgres:5432/zeppole?schema=public
+      JWT_SECRET: ${JWT_SECRET:-zeppole-local-docker-compose-only-use-real-secret-in-prod-min-32}
+      NODE_ENV: production
+      PORT: "4000"
+      HOST: 0.0.0.0
+      ZEPPOLE_EMULATOR_BRIDGE_URL: ${ZEPPOLE_EMULATOR_BRIDGE_URL:-}
+      ZEPPOLE_EMULATOR_BRIDGE_TOKEN: ${ZEPPOLE_EMULATOR_BRIDGE_TOKEN:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "4000:4000"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'node -e "fetch(\"http://127.0.0.1:4000/health\").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 45s
+    command:
+      [
+        "sh",
+        "-c",
+        "npx prisma migrate deploy && node dist/server.js",
+      ]
+
+  web:
+    build:
+      context: ./platform/control-plane/web
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+
+  # Optional: `docker compose --profile emulators up` — wire API env ZEPPOLE_EMULATOR_BRIDGE_* to this service
+  emulator-bridge:
+    profiles: ["emulators"]
+    build:
+      context: ./platform/device-pool/emulator-bridge
+    environment:
+      BRIDGE_TOKEN: ${ZEPPOLE_EMULATOR_BRIDGE_TOKEN:-change-me-set-in-dotenv}
+      PUBLIC_SCHEME: ${ZEPPOLE_PUBLIC_SCHEME:-http}
+      PUBLIC_HOST: ${ZEPPOLE_PUBLIC_HOST:-localhost}
+      EMULATOR_IMAGE: ${ZEPPOLE_EMULATOR_IMAGE:-budtmo/docker-android:emulator_11.0}
+      # Only enable on Linux hosts with KVM: EMULATOR_USE_KVM=true plus devices: [/dev/kvm:/dev/kvm]
+      EMULATOR_USE_KVM: ${EMULATOR_USE_KVM:-false}
+      LOG_LEVEL: info
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "9100:9100"
+
+  # Optional: `docker compose --profile with-worker up` after setting ZEPPOLE_DEVICE_TOKEN
+  worker:
+    profiles: ["with-worker"]
+    build:
+      context: ./platform/execution-workers/worker
+    environment:
+      ZEPPOLE_API_URL: http://api:4000/api/v1
+      ZEPPOLE_DEVICE_TOKEN: ${ZEPPOLE_DEVICE_TOKEN:-}
+    depends_on:
+      - api
+    restart: on-failure
+
+volumes:
+  zeppole-pg:
