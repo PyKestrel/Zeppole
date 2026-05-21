@@ -30,6 +30,11 @@ mkdir -p "$BLD"
 
 # emu-docker selects system image by codename regex (e.g. U, V, B).
 export PATH="/opt/venv/bin:${PATH}"
+EMU_DOCKER="/opt/venv/bin/emu-docker"
+if [ ! -x "$EMU_DOCKER" ]; then
+  echo "[zeppole] ERROR: emu-docker missing at $EMU_DOCKER (venv not installed?)"
+  exit 1
+fi
 cd /opt/aemu
 
 IMG_PATTERN="${CODENAME} ${SYSTEM_IMAGE} ${ABI}"
@@ -40,7 +45,7 @@ fi
 phase sdk_download
 echo "[zeppole] running emu-docker create (accept licenses first run)..."
 echo "[zeppole] pattern: ${IMG_PATTERN}"
-yes | emu-docker create "$CHANNEL" "$IMG_PATTERN" --dest "$BLD" --no-metrics || {
+yes | "$EMU_DOCKER" create "$CHANNEL" "$IMG_PATTERN" --dest "$BLD" --no-metrics || {
   echo "[zeppole] emu-docker create failed"
   exit 1
 }
