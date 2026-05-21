@@ -66,9 +66,12 @@ export function EmptyState({
 export function StatusBadge({ status }: { status: string }) {
   const s = status.toUpperCase();
   let tone: "neutral" | "ok" | "warn" | "bad" | "info" = "neutral";
-  if (["PASSED", "ONLINE", "ACTIVE", "COMPLETED", "DONE"].includes(s)) tone = "ok";
+  if (["PASSED", "ONLINE", "ACTIVE", "COMPLETED", "DONE", "SUCCEEDED"].includes(s)) tone = "ok";
   else if (["FAILED", "OFFLINE", "ERROR"].includes(s)) tone = "bad";
-  else if (["RUNNING", "PENDING", "QUEUED", "RETRYING", "STARTING", "STOPPING"].includes(s)) tone = "info";
+  else if (
+    ["RUNNING", "PENDING", "QUEUED", "RETRYING", "STARTING", "STOPPING", "BUILDING"].includes(s)
+  )
+    tone = "info";
   else if (["CANCELLED", "WARNING"].includes(s)) tone = "warn";
   return (
     <span className={`status-badge status-badge--${tone}`} title={status}>

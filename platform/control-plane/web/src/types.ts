@@ -57,3 +57,45 @@ export type EmulatorInstance = {
   createdAt: string;
   updatedAt: string;
 };
+
+export type EmulatorImageBuild = {
+  id: string;
+  name: string;
+  status: string;
+  phase?: string;
+  phaseLabel?: string;
+  lastLogLine?: string | null;
+  elapsedSeconds?: number;
+  apiLevel: number;
+  codename: string;
+  systemImage: string;
+  abi: string;
+  emulatorChannel: string;
+  pageSize: string | null;
+  enableNovnc: boolean;
+  enableAppium: boolean;
+  dockerTag: string;
+  imageRef: string | null;
+  buildLog: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type EmulatorImagesLiveMeta = {
+  syncing: boolean;
+  buildingCount?: number;
+  builderConfigured?: boolean;
+  builderReachable?: boolean;
+  builderDetail?: string;
+  syncedAt?: string;
+};
+
+export type GoogleAemuCatalog = {
+  source: string;
+  emulatorChannels: { id: string; label: string }[];
+  abis: { id: string; label: string }[];
+  systemImages: { id: string; label: string; description: string }[];
+  pageSizes: { id: string; label: string }[];
+  apiLevels: { apiLevel: number; codename: string; androidVersion: string }[];
+};

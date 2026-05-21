@@ -19,8 +19,9 @@ const manualBody = z.object({
 const dockerBody = z.object({
   mode: z.literal("docker"),
   name: z.string().min(1).max(200),
-  emulatorDevice: z.string().min(1).max(200),
+  emulatorDevice: z.string().min(1).max(200).optional(),
   image: z.string().min(1).max(300).optional(),
+  runtime: z.enum(["docker-android", "google-aemu"]).optional(),
 });
 
 const createBody = z.discriminatedUnion("mode", [manualBody, dockerBody]);
@@ -101,12 +102,23 @@ export const emulatorsPlugin: FastifyPluginAsync = async (app) => {
         return;
       }
 
+      const runtime =
+        body.runtime ??
+        (body.image && /zeppole-google|android-emulator-268719/i.test(body.image)
+          ? "google-aemu"
+          : "docker-android");
+
+      if (runtime === "docker-android" && !body.emulatorDevice) {
+        reply.code(400).send({ error: "emulatorDevice is required for docker-android runtime" });
+        return;
+      }
+
       const draft = await app.prisma.emulatorInstance.create({
         data: {
           name: body.name,
           mode: "docker",
           status: "STARTING",
-          emulatorDevice: body.emulatorDevice,
+          emulatorDevice: body.emulatorDevice ?? "Google AEMU",
           dockerImage: body.image ?? null,
         },
       });
@@ -122,6 +134,7 @@ export const emulatorsPlugin: FastifyPluginAsync = async (app) => {
             emulatorDevice: body.emulatorDevice,
             image: body.image,
             containerName,
+            runtime,
           });
 
           await app.prisma.emulatorInstance.update({

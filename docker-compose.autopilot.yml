@@ -14,6 +14,13 @@ services:
       - zeppole.autopilot.env
     environment:
       ZEPPOLE_EMULATOR_BRIDGE_URL: http://emulator-bridge:9100
+      ZEPPOLE_IMAGE_BUILDER_URL: http://google-emulator-builder:9200
+
+  google-emulator-builder:
+    env_file:
+      - zeppole.autopilot.env
+    environment:
+      BUILDER_TOKEN: ${ZEPPOLE_EMULATOR_BRIDGE_TOKEN}
 
   emulator-bridge:
     env_file:

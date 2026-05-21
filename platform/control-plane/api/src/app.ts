@@ -62,6 +62,7 @@ export async function buildApp() {
         { name: "runs", description: "Test runs" },
         { name: "devices", description: "Device pool" },
         { name: "emulators", description: "Android emulator instances (docker / manual)" },
+        { name: "emulator-images", description: "Custom Google aemu container image builds" },
         { name: "worker", description: "Execution worker API" },
         { name: "webhooks", description: "Webhooks" },
       ],

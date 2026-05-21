@@ -59,6 +59,7 @@ This will:
 
 - Web UI: `http://localhost:8080` — sign in as **`admin@zeppole.local`** (password shown once when the env file is created, and stored as `ZEPPOLE_ADMIN_PASSWORD` in `zeppole.autopilot.env`).
 - noVNC / Appium links use `ZEPPOLE_PUBLIC_HOST` (default `localhost`); change it in the env file if you browse from another machine.
+- **Google system images:** default emulator is API 34 (`emulator_14.0`). For custom API levels, Play Store images, and official [android-emulator-container-scripts](https://github.com/google/android-emulator-container-scripts) containers with browser display + Appium, use **Emulator images** in the UI (requires `google-emulator-builder` from `npm run zeppole:up`). See `platform/device-pool/docs/google-system-images.md`.
 
 Full wipe and recreate:
 
@@ -83,9 +84,18 @@ npm run zeppole:up
 
 ## Docker Compose (manual / CI)
 
+Emulator deploy from the UI needs the **emulators** profile, bridge env vars, and usually `zeppole.autopilot.env`:
+
 ```bash
-docker compose up --build
+# First time: npm run zeppole:up   OR   cp zeppole.autopilot.env.example zeppole.autopilot.env  (edit secrets)
+
+docker compose -f docker-compose.yml -f docker-compose.autopilot.yml \
+  --env-file zeppole.autopilot.env \
+  --profile emulators --profile builders --profile with-worker \
+  up -d --build
 ```
+
+Plain `docker compose up` without those files leaves `ZEPPOLE_EMULATOR_BRIDGE_*` empty and the UI shows “Docker deploy is disabled”.
 
 - UI + API proxy: `http://localhost:8080` (nginx → API `/api/`)
 - API direct: `http://localhost:4000`

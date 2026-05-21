@@ -23,14 +23,19 @@ services:
   api:
     build:
       context: ./platform/control-plane/api
+    env_file:
+      - path: zeppole.autopilot.env
+        required: false
     environment:
       DATABASE_URL: postgresql://zeppole:zeppole@postgres:5432/zeppole?schema=public
       JWT_SECRET: ${JWT_SECRET:-zeppole-local-docker-compose-only-use-real-secret-in-prod-min-32}
       NODE_ENV: production
       PORT: "4000"
       HOST: 0.0.0.0
-      ZEPPOLE_EMULATOR_BRIDGE_URL: ${ZEPPOLE_EMULATOR_BRIDGE_URL:-}
+      ZEPPOLE_EMULATOR_BRIDGE_URL: ${ZEPPOLE_EMULATOR_BRIDGE_URL:-http://emulator-bridge:9100}
       ZEPPOLE_EMULATOR_BRIDGE_TOKEN: ${ZEPPOLE_EMULATOR_BRIDGE_TOKEN:-}
+      ZEPPOLE_IMAGE_BUILDER_URL: ${ZEPPOLE_IMAGE_BUILDER_URL:-http://google-emulator-builder:9200}
+      ZEPPOLE_IMAGE_BUILDER_TOKEN: ${ZEPPOLE_IMAGE_BUILDER_TOKEN:-${ZEPPOLE_EMULATOR_BRIDGE_TOKEN:-}}
     depends_on:
       postgres:
         condition: service_healthy
@@ -62,16 +67,34 @@ services:
     ports:
       - "8080:80"
 
+  # Builds Google aemu images (android-emulator-container-scripts) with Zeppole overlay
+  google-emulator-builder:
+    profiles: ["emulators", "builders"]
+    build:
+      context: ./platform/device-pool/google-emulator-builder
+    environment:
+      BUILDER_TOKEN: ${ZEPPOLE_IMAGE_BUILDER_TOKEN:-${ZEPPOLE_EMULATOR_BRIDGE_TOKEN:-change-me-set-in-dotenv}}
+      LOG_LEVEL: info
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - zeppole-builds:/work
+    ports:
+      - "9200:9200"
+
   # Optional: `docker compose --profile emulators up` — wire API env ZEPPOLE_EMULATOR_BRIDGE_* to this service
   emulator-bridge:
     profiles: ["emulators"]
     build:
       context: ./platform/device-pool/emulator-bridge
+    env_file:
+      - path: zeppole.autopilot.env
+        required: false
     environment:
-      BRIDGE_TOKEN: ${ZEPPOLE_EMULATOR_BRIDGE_TOKEN:-change-me-set-in-dotenv}
+      BRIDGE_TOKEN: ${ZEPPOLE_EMULATOR_BRIDGE_TOKEN:-}
+      ZEPPOLE_EMULATOR_BRIDGE_TOKEN: ${ZEPPOLE_EMULATOR_BRIDGE_TOKEN:-}
       PUBLIC_SCHEME: ${ZEPPOLE_PUBLIC_SCHEME:-http}
       PUBLIC_HOST: ${ZEPPOLE_PUBLIC_HOST:-localhost}
-      EMULATOR_IMAGE: ${ZEPPOLE_EMULATOR_IMAGE:-budtmo/docker-android:emulator_11.0}
+      EMULATOR_IMAGE: ${ZEPPOLE_EMULATOR_IMAGE:-budtmo/docker-android:emulator_14.0}
       # Only enable on Linux hosts with KVM: EMULATOR_USE_KVM=true plus devices: [/dev/kvm:/dev/kvm]
       EMULATOR_USE_KVM: ${EMULATOR_USE_KVM:-false}
       LOG_LEVEL: info
@@ -94,3 +117,4 @@ services:
 
 volumes:
   zeppole-pg:
+  zeppole-builds:

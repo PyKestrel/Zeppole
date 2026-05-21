@@ -6,13 +6,15 @@
     "check:telemetry": "node scripts/check-no-telemetry.mjs",
     "test": "npm run test -w @zeppole/api -w @zeppole/worker --if-present",
     "build": "npm run build -w @zeppole/api -w @zeppole/web -w @zeppole/worker -w @zeppole/emulator-bridge --if-present",
-    "zeppole:up": "node scripts/zeppole-up.mjs"
+    "zeppole:up": "node scripts/zeppole-up.mjs",
+    "zeppole:build-emulator": "node scripts/build-zeppole-emulator.mjs"
   },
   "workspaces": [
     "platform/control-plane/api",
     "platform/control-plane/web",
     "platform/execution-workers/worker",
-    "platform/device-pool/emulator-bridge"
+    "platform/device-pool/emulator-bridge",
+    "platform/device-pool/google-emulator-builder"
   ],
   "engines": {
     "node": ">=20"

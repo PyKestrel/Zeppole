@@ -1,0 +1,38 @@
+{
+  "source": "https://github.com/google/android-emulator-container-scripts",
+  "emulatorChannels": [
+    { "id": "stable", "label": "Stable" },
+    { "id": "dev", "label": "Developer" },
+    { "id": "canary", "label": "Canary" }
+  ],
+  "abis": [
+    { "id": "x86_64", "label": "x86_64 (64-bit, recommended)" },
+    { "id": "x86", "label": "x86 (32-bit)" }
+  ],
+  "systemImages": [
+    {
+      "id": "google_apis",
+      "label": "Google APIs",
+      "description": "Google Play services APIs without Play Store app"
+    },
+    {
+      "id": "google_apis_playstore",
+      "label": "Google Play",
+      "description": "Play Store app and Google Play services"
+    },
+    { "id": "aosp", "label": "AOSP", "description": "Android Open Source Project (no Google apps)" }
+  ],
+  "pageSizes": [
+    { "id": "", "label": "4 KB pages (default)" },
+    { "id": "ps16k", "label": "16 KB pages (ps16k)" }
+  ],
+  "apiLevels": [
+    { "apiLevel": 30, "codename": "R", "androidVersion": "11" },
+    { "apiLevel": 31, "codename": "S", "androidVersion": "12" },
+    { "apiLevel": 32, "codename": "Sv2", "androidVersion": "12L" },
+    { "apiLevel": 33, "codename": "T", "androidVersion": "13" },
+    { "apiLevel": 34, "codename": "U", "androidVersion": "14" },
+    { "apiLevel": 35, "codename": "V", "androidVersion": "15" },
+    { "apiLevel": 36, "codename": "B", "androidVersion": "16" }
+  ]
+}

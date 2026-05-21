@@ -139,6 +139,27 @@ model Device {
   testResults    TestResult[]
 }
 
+/// Custom emulator image build (Google android-emulator-container-scripts + Zeppole overlay).
+model EmulatorImageBuild {
+  id              String   @id @default(uuid())
+  name            String
+  status          String   @default("QUEUED")
+  apiLevel        Int
+  codename        String
+  systemImage     String
+  abi             String
+  emulatorChannel String
+  pageSize        String?
+  enableNovnc     Boolean  @default(true)
+  enableAppium    Boolean  @default(true)
+  dockerTag       String
+  imageRef        String?
+  buildLog        String?  @db.Text
+  errorMessage    String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
 /// Android emulator / docker-android instance tracked for operators (noVNC + Appium URLs).
 model EmulatorInstance {
   id               String          @id @default(uuid())

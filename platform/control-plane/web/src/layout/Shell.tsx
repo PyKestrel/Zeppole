@@ -44,6 +44,10 @@ export function Shell({ onLogout }: { onLogout: () => void }) {
             <IconSmartphone />
             <span>Emulators</span>
           </NavLink>
+          <NavLink className="sidebar__link" to="/emulator-images">
+            <IconSmartphone />
+            <span>Emulator images</span>
+          </NavLink>
         </nav>
 
         {me?.role === "ADMIN" ? (

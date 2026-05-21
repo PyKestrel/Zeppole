@@ -5,6 +5,7 @@ import { Shell } from "./layout/Shell";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DevicesPage } from "./pages/DevicesPage";
 import { EmulatorsPage } from "./pages/EmulatorsPage";
+import { EmulatorImagesPage } from "./pages/EmulatorImagesPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ProjectWorkspacePage } from "./pages/ProjectWorkspacePage";
 import { ProjectsPage } from "./pages/ProjectsPage";
@@ -80,6 +81,7 @@ export function App() {
         <Route path="projects/:projectId" element={<ProjectWorkspacePage />} />
         <Route path="devices" element={<DevicesPage />} />
         <Route path="emulators" element={<EmulatorsPage />} />
+        <Route path="emulator-images" element={<EmulatorImagesPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="webhooks" element={<WebhooksPage />} />
       </Route>

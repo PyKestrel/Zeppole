@@ -74,9 +74,10 @@ export async function emulatorBridgeKvmAvailable(): Promise<boolean> {
 export type BridgeDeployRequest = {
   instanceId: string;
   name: string;
-  emulatorDevice: string;
+  emulatorDevice?: string;
   image?: string;
   containerName: string;
+  runtime?: "docker-android" | "google-aemu";
 };
 
 export type BridgeDeployResponse = {

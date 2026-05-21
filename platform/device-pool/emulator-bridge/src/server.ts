@@ -14,7 +14,7 @@ const TOKEN = (process.env.BRIDGE_TOKEN ?? process.env.ZEPPOLE_EMULATOR_BRIDGE_T
 const PUBLIC_SCHEME = (process.env.PUBLIC_SCHEME ?? "http").replace(/:+$/, "");
 const PUBLIC_HOST = (process.env.PUBLIC_HOST ?? "127.0.0.1").trim();
 const DEFAULT_IMAGE =
-  process.env.EMULATOR_IMAGE?.trim() ?? "budtmo/docker-android:emulator_11.0";
+  process.env.EMULATOR_IMAGE?.trim() ?? "budtmo/docker-android:emulator_14.0";
 const DOCKER_TIMEOUT_MS = Number(process.env.DOCKER_TIMEOUT_MS ?? 600_000);
 
 function authHeaderOk(auth: string | undefined): boolean {
@@ -192,20 +192,33 @@ app.get("/health", async () => {
   };
 });
 
-app.post<{ Body: { containerName: string; emulatorDevice: string; image?: string } }>(
-  "/v1/deploy",
-  async (request, reply) => {
-    const { containerName, emulatorDevice, image } = request.body ?? ({} as never);
+function isGoogleAemuImage(image: string, runtime?: string): boolean {
+  if (runtime === "google-aemu") return true;
+  if (runtime === "docker-android") return false;
+  return /zeppole-google|android-emulator-268719|\/images\//i.test(image);
+}
+
+app.post<{
+  Body: {
+    containerName: string;
+    emulatorDevice?: string;
+    image?: string;
+    runtime?: "docker-android" | "google-aemu";
+  };
+}>("/v1/deploy", async (request, reply) => {
+    const { containerName, emulatorDevice, image, runtime } = request.body ?? ({} as never);
     if (!containerName || !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{1,200}$/.test(containerName)) {
       reply.code(400).send({ error: "Invalid containerName" });
       return;
     }
-    if (!emulatorDevice || emulatorDevice.length > 300) {
+
+    const img = image?.trim() || DEFAULT_IMAGE;
+    const googleRuntime = isGoogleAemuImage(img, runtime);
+    if (!googleRuntime && (!emulatorDevice || emulatorDevice.length > 300)) {
       reply.code(400).send({ error: "Invalid emulatorDevice" });
       return;
     }
 
-    const img = image?.trim() || DEFAULT_IMAGE;
     const useKvm = await canPassKvmToEmulator();
     if (!useKvm) {
       request.log.warn({ containerName }, "deploy rejected: kvm not available");
@@ -213,31 +226,34 @@ app.post<{ Body: { containerName: string; emulatorDevice: string; image?: string
       return;
     }
 
-    request.log.info({ containerName, img, useKvm, emulatorDevice }, "emulator deploy started");
+    request.log.info(
+      { containerName, img, useKvm, emulatorDevice, googleRuntime },
+      "emulator deploy started",
+    );
 
     await removeContainerBestEffort(containerName);
 
-    const runArgs = [
-      "run",
-      "-d",
-      "--name",
-      containerName,
-      "-p",
-      "0:6080",
-      "-p",
-      "0:4723",
-      "-e",
-      "WEB_VNC=true",
-      "-e",
-      "APPIUM=true",
-      "-e",
-      `EMULATOR_DEVICE=${emulatorDevice}`,
-      "--restart",
-      "unless-stopped",
-    ];
+    const runArgs = ["run", "-d", "--name", containerName, "--restart", "unless-stopped"];
+
+    if (googleRuntime) {
+      runArgs.push("-p", "0:6080", "-p", "0:4723", "-p", "0:5555", "-p", "0:8554");
+      runArgs.push("-e", "ZEPPOLE_ENABLE_APPIUM=true", "-e", "ZEPPOLE_ENABLE_NOVNC=true");
+    } else {
+      runArgs.push(
+        "-p",
+        "0:6080",
+        "-p",
+        "0:4723",
+        "-e",
+        "WEB_VNC=true",
+        "-e",
+        "APPIUM=true",
+        "-e",
+        `EMULATOR_DEVICE=${emulatorDevice}`,
+      );
+    }
 
     runArgs.push("--device", "/dev/kvm");
-
     runArgs.push(img);
 
     try {
@@ -313,6 +329,7 @@ app.post<{ Body: { containerName: string; emulatorDevice: string; image?: string
     }
 
     const displayUrl = `${PUBLIC_SCHEME}://${PUBLIC_HOST}:${p6080}/?autoconnect=true`;
+    // Appium 2.x (docker-android): automation clients use this base; browsers should use /status instead of /.
     const appiumUrl = `${PUBLIC_SCHEME}://${PUBLIC_HOST}:${p4723}/`;
 
     request.log.info({ containerName, displayUrl, appiumUrl }, "emulator deploy finished");
