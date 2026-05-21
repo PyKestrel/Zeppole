@@ -14,7 +14,8 @@ COPY src ./src
 COPY catalog.json ./
 RUN npm install && npm run build
 
-FROM python:3.12-bookworm
+# Final image needs Node (HTTP API) and Python venv (emu-docker) plus Docker CLI.
+FROM node:22-bookworm
 RUN apt-get update && apt-get install -y --no-install-recommends \
     docker.io git ca-certificates openjdk-17-jre-headless \
     && rm -rf /var/lib/apt/lists/*
