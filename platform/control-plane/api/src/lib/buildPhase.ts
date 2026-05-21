@@ -58,6 +58,12 @@ export function parseBuildFailureReason(log: string | null | undefined): string 
       "Check earlier log lines, free disk space, and retry."
     );
   }
+  if (/KeyError.*ro\.build\.version\.incremental/i.test(log)) {
+    return (
+      "Stale or incomplete sys-* Docker image on the host. Rebuild google-emulator-builder and retry; " +
+      "cleanup removes broken sys images automatically on failure."
+    );
+  }
   if (/emu-docker create failed/i.test(log)) {
     return "emu-docker create failed — see build log for the first ERROR line above.";
   }

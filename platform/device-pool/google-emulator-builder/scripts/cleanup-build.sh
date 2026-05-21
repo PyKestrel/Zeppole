@@ -27,7 +27,7 @@ for img in "$BASE_TAG" "$TAG"; do
   fi
 done
 
-# emu-docker tags intermediate sys-* images (see build log)
+# emu-docker intermediate sys-* images (from log and by repository name)
 if [ -f "$LOG_FILE" ]; then
   grep -oE 'sys-[a-zA-Z0-9._-]+' "$LOG_FILE" 2>/dev/null | sort -u | while read -r sys_img; do
     [ -z "$sys_img" ] && continue
@@ -37,6 +37,15 @@ if [ -f "$LOG_FILE" ]; then
     fi
   done
 fi
+docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | while read -r ref; do
+  repo="${ref%%:*}"
+  case "$repo" in
+    sys-*)
+      echo "[zeppole] Removing sys image ${ref}"
+      docker rmi -f "$ref" 2>/dev/null || true
+      ;;
+  esac
+done
 
 # Dangling layers from failed docker build / export
 docker image prune -f >/dev/null 2>&1 || true

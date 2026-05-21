@@ -63,6 +63,13 @@ if [ -n "$PAGE_SIZE" ]; then
 fi
 
 phase sdk_download
+echo "[zeppole] Removing stale sys-${API_LEVEL}-* images from prior failed builds..."
+docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | while read -r ref; do
+  repo="${ref%%:*}"
+  case "$repo" in
+    sys-${API_LEVEL}|sys-${API_LEVEL}-*) docker rmi -f "$ref" 2>/dev/null || true ;;
+  esac
+done
 echo "[zeppole] running emu-docker create (accept licenses first run)..."
 echo "[zeppole] pattern: ${IMG_PATTERN}"
 if ! yes | "$EMU_DOCKER" create "$CHANNEL" "$IMG_PATTERN" --dest "$BLD" --no-metrics; then
