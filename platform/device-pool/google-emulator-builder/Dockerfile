@@ -21,6 +21,8 @@ COPY --from=aemu-src /opt/aemu /opt/aemu
 RUN python3 -m venv /opt/venv \
     && /opt/venv/bin/pip install --upgrade pip setuptools \
     && /opt/venv/bin/pip install -e /opt/aemu \
+    && sed -i 's|sys_docker.build(args.dest / "sys_img")|sys_docker.build(Path(args.dest) / "sys_img")|' /opt/aemu/emu/emu_docker.py \
+    && grep -q 'Path(args.dest) / "sys_img"' /opt/aemu/emu/emu_docker.py \
     && test -x /opt/venv/bin/emu-docker
 COPY --from=build /app/dist /app/dist
 COPY --from=build /app/node_modules /app/node_modules
