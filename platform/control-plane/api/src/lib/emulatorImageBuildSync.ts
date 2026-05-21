@@ -3,6 +3,7 @@ import {
   derivePhaseFromLog,
   elapsedSeconds,
   lastLogLine,
+  parseBuildFailureReason,
   phaseLabel,
   type BuildPhaseId,
 } from "./buildPhase.js";
@@ -23,12 +24,14 @@ export function enrichBuild(row: EmulatorImageBuild, remotePhase?: string): Enri
       : row.status === "FAILED"
         ? "failed"
         : derivePhaseFromLog(row.buildLog, row.status));
+  const failureHint = row.status === "FAILED" ? parseBuildFailureReason(row.buildLog) : null;
   return {
     ...row,
     phase,
     phaseLabel: phaseLabel(phase),
     lastLogLine: lastLogLine(row.buildLog),
     elapsedSeconds: elapsedSeconds(row.createdAt),
+    errorMessage: failureHint ?? row.errorMessage,
   };
 }
 
@@ -52,7 +55,11 @@ export async function syncBuildFromBuilder(
               buildLog: remote.logTail || null,
               imageRef: remote.status === "SUCCEEDED" ? row.dockerTag : row.imageRef,
               errorMessage:
-                remote.status === "FAILED" ? row.errorMessage ?? "Build failed — see build log" : null,
+                remote.status === "FAILED"
+                  ? parseBuildFailureReason(remote.logTail) ??
+                    row.errorMessage ??
+                    "Build failed — see build log"
+                  : null,
             },
           })
         : row;

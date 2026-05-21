@@ -45,6 +45,14 @@ export async function fetchImageBuilderCatalog(): Promise<unknown> {
   return builderFetch("/v1/catalog");
 }
 
+export async function fetchImageBuilderPreflight(): Promise<{
+  ok: boolean;
+  recommendedFreeGb: number;
+  detail: string;
+}> {
+  return builderFetch("/v1/preflight");
+}
+
 export async function startImageBuild(job: ImageBuildJob): Promise<void> {
   await builderFetch("/v1/build", { method: "POST", body: JSON.stringify(job) });
 }

@@ -15,6 +15,11 @@ export function EmulatorImagesPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; variant: "success" | "error" } | null>(null);
   const [builderConfigured, setBuilderConfigured] = useState(true);
+  const [preflight, setPreflight] = useState<{
+    ok: boolean;
+    recommendedFreeGb: number;
+    detail: string;
+  } | null>(null);
 
   const [name, setName] = useState("Google API 34 Play");
   const [apiLevel, setApiLevel] = useState(34);
@@ -78,6 +83,9 @@ export function EmulatorImagesPage() {
         setBuilderConfigured(false);
         showToast(err.message, "error");
       });
+    api<{ ok: boolean; recommendedFreeGb: number; detail: string }>("/emulator-images/preflight")
+      .then(setPreflight)
+      .catch(() => setPreflight(null));
   }, [loadList]);
 
   useEffect(() => {
@@ -150,6 +158,18 @@ export function EmulatorImagesPage() {
         variant={toast?.variant === "error" ? "error" : "success"}
         onDismiss={() => setToast(null)}
       />
+
+      {preflight && !preflight.ok ? (
+        <div className="callout callout--warn" role="status">
+          <strong>Low disk on Docker host.</strong> Emulator image builds need about{" "}
+          {preflight.recommendedFreeGb}GB free under <code>/var/lib/docker</code>. On the host run{" "}
+          <code>df -h</code> and <code>docker system df</code>; free space or{" "}
+          <code>docker system prune -a</code> before starting a build.
+          <pre className="log-preview small" style={{ marginTop: "0.5rem", maxHeight: "6rem" }}>
+            {preflight.detail}
+          </pre>
+        </div>
+      ) : null}
 
       {!builderConfigured ? (
         <div className="callout callout--warn" role="status">
@@ -272,7 +292,7 @@ export function EmulatorImagesPage() {
               type="submit"
               className="btn btn--primary btn--block"
               style={{ marginTop: "1rem" }}
-              disabled={!builderConfigured || submitting}
+              disabled={!builderConfigured || submitting || preflight?.ok === false}
             >
               {submitting ? "Starting build…" : "Start build"}
             </button>

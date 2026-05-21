@@ -7,6 +7,7 @@ import {
 } from "../../lib/emulatorImageBuildSync.js";
 import {
   fetchImageBuilderCatalog,
+  fetchImageBuilderPreflight,
   imageBuilderConfigured,
   imageBuilderHealth,
   startImageBuild,
@@ -46,6 +47,25 @@ export const emulatorImagesPlugin: FastifyPluginAsync = async (app) => {
         return;
       }
       return fetchImageBuilderCatalog();
+    },
+  );
+
+  app.get(
+    "/emulator-images/preflight",
+    {
+      onRequest: [app.authenticate],
+      schema: { tags: ["emulator-images"], summary: "Check Docker host disk before starting a build" },
+    },
+    async (request, reply) => {
+      if (!can(request.user.role, "view")) {
+        reply.code(403).send({ error: "Forbidden" });
+        return;
+      }
+      if (!imageBuilderConfigured()) {
+        reply.code(503).send({ error: "Image builder is not configured." });
+        return;
+      }
+      return fetchImageBuilderPreflight();
     },
   );
 
@@ -187,6 +207,24 @@ export const emulatorImagesPlugin: FastifyPluginAsync = async (app) => {
         return;
       }
       const { buildId } = request.params as { buildId: string };
+      const row = await app.prisma.emulatorImageBuild.findUnique({ where: { id: buildId } });
+      if (row?.status === "FAILED" && imageBuilderConfigured()) {
+        try {
+          await fetch(
+            `${process.env.ZEPPOLE_IMAGE_BUILDER_URL!.replace(/\/$/, "")}/v1/build/${buildId}/cleanup`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${process.env.ZEPPOLE_IMAGE_BUILDER_TOKEN!}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ dockerTag: row.dockerTag }),
+            },
+          );
+        } catch {
+          /* best-effort */
+        }
+      }
       await app.prisma.emulatorImageBuild.delete({ where: { id: buildId } }).catch(() => null);
       reply.code(204).send();
     },

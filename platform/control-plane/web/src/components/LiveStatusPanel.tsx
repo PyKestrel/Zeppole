@@ -117,6 +117,7 @@ export const IMAGE_BUILD_STEPS: LiveStep[] = [
   { id: "sdk_download", label: "SDK & system image" },
   { id: "docker_base", label: "Docker base image" },
   { id: "zeppole_overlay", label: "Zeppole overlay" },
+  { id: "cleanup", label: "Cleaning up" },
   { id: "complete", label: "Complete" },
 ];
 

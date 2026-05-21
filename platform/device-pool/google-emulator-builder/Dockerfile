@@ -29,8 +29,8 @@ COPY --from=build /app/node_modules /app/node_modules
 COPY --from=build /app/package.json /app/package.json
 COPY --from=build /app/catalog.json /app/catalog.json
 COPY overlay /opt/zeppole-overlay
-COPY scripts/run-build.sh /opt/zeppole-scripts/run-build.sh
-RUN chmod +x /opt/zeppole-scripts/run-build.sh
+COPY scripts/run-build.sh scripts/check-disk.sh scripts/cleanup-build.sh /opt/zeppole-scripts/
+RUN chmod +x /opt/zeppole-scripts/run-build.sh /opt/zeppole-scripts/check-disk.sh /opt/zeppole-scripts/cleanup-build.sh
 
 ENV PATH="/opt/venv/bin:${PATH}"
 ENV DOCKER_BUILDKIT=1

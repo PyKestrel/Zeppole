@@ -29,7 +29,19 @@ When `npm run zeppole:up` is used (or Compose with `--profile emulators --profil
 3. Start a build; the `google-emulator-builder` service runs `emu-docker create` and layers the Zeppole overlay.
 4. On **Emulators**, choose a succeeded build (or set runtime **Google aemu** and your `dockerTag`).
 
-Requirements: Linux Docker host with **KVM**, large disk for SDK downloads, and matching `ZEPPOLE_IMAGE_BUILDER_TOKEN` on API and builder (autopilot sets this to the bridge token).
+Requirements: Linux Docker host with **KVM**, and matching `ZEPPOLE_IMAGE_BUILDER_TOKEN` on API and builder (autopilot sets this to the bridge token).
+
+**Disk:** Google Play / API 35 images download ~1.5GB+ and Docker exports multi‑GB layers. Keep **at least 40GB free** under `/var/lib/docker` on the host (not just inside the builder container). If a build fails with `no space left on device`, on the host run:
+
+```bash
+df -h
+docker system df
+docker system prune -a   # removes unused images/containers — confirm before running
+```
+
+Then rebuild `google-emulator-builder` and start a new image build.
+
+Failed builds automatically run **cleanup**: partial workspace under `/work/builds/<id>/bld`, intermediate tags (`zeppole-google-base:<id>`, `sys-*` from the log), and dangling images are removed. The build log is kept for the UI.
 
 ## Build `zeppole-emulator` (Google APIs, your registry)
 

@@ -4,6 +4,7 @@ export const BUILD_PHASES = [
   { id: "sdk_download", label: "SDK & system image" },
   { id: "docker_base", label: "Docker base image" },
   { id: "zeppole_overlay", label: "Zeppole overlay" },
+  { id: "cleanup", label: "Cleaning up" },
   { id: "complete", label: "Complete" },
 ] as const;
 
@@ -22,6 +23,7 @@ export function derivePhaseFromLog(log: string | null | undefined, status: strin
   if (s === "SUCCEEDED") return "complete";
   if (s === "FAILED") return "failed";
   const text = log ?? "";
+  if (text.includes("PHASE:cleanup") || text.includes("Cleaning up failed build")) return "cleanup";
   if (text.includes("build complete") || text.includes("PHASE:complete")) return "complete";
   if (text.includes("PHASE:zeppole_overlay") || text.includes("applying Zeppole overlay")) return "zeppole_overlay";
   if (text.includes("PHASE:docker_base") || text.includes("docker build base")) return "docker_base";
@@ -39,6 +41,33 @@ export function lastLogLine(log: string | null | undefined): string | null {
 export function elapsedSeconds(createdAt: Date | string): number {
   const t = typeof createdAt === "string" ? new Date(createdAt).getTime() : createdAt.getTime();
   return Math.max(0, Math.floor((Date.now() - t) / 1000));
+}
+
+/** Map common build log failures to operator-facing guidance. */
+export function parseBuildFailureReason(log: string | null | undefined): string | null {
+  if (!log) return null;
+  if (/no space left on device/i.test(log)) {
+    return (
+      "Docker host ran out of disk during image export (system.img layer is ~1.5GB+). " +
+      "Free at least 40GB under /var/lib/docker, then run: docker system prune -a"
+    );
+  }
+  if (/KeyError.*ro\.product\.cpu\.abi/i.test(log)) {
+    return (
+      "System image Docker layer did not build completely (often after a disk or docker export error). " +
+      "Check earlier log lines, free disk space, and retry."
+    );
+  }
+  if (/emu-docker create failed/i.test(log)) {
+    return "emu-docker create failed — see build log for the first ERROR line above.";
+  }
+  if (/insufficient disk on Docker host/i.test(log)) {
+    return "Not enough free disk on the Docker host before the build started. See log for df details.";
+  }
+  if (/Cleanup finished for/i.test(log)) {
+    return "Build failed; partial Docker images and workspace were cleaned up automatically. Free more disk if needed, then retry.";
+  }
+  return null;
 }
 
 export function formatElapsed(seconds: number): string {

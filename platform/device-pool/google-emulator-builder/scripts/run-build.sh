@@ -18,17 +18,37 @@ mkdir -p "$(dirname "$LOG_FILE")"
 WORKDIR="/work/builds/${BUILD_ID}"
 mkdir -p "$WORKDIR"
 phase() { echo "$1" > "${WORKDIR}/phase"; echo "[zeppole] PHASE:$1"; }
+
+on_fail() {
+  trap - ERR
+  local code=$?
+  /opt/zeppole-scripts/cleanup-build.sh "$BUILD_ID" "$TAG" "$LOG_FILE" >>"$LOG_FILE" 2>&1 \
+    || echo "[zeppole] WARNING: cleanup script reported errors (non-fatal)" >>"$LOG_FILE"
+  phase failed
+  if grep -qi "no space left on device" "$LOG_FILE" 2>/dev/null; then
+    echo "[zeppole] ERROR: Docker host ran out of disk during docker build/export."
+    echo "[zeppole] Free space under /var/lib/docker (often 40GB+ needed). On the host:"
+    echo "[zeppole]   df -h && docker system df && docker system prune -a"
+  elif grep -q "ro.product.cpu.abi" "$LOG_FILE" 2>/dev/null; then
+    echo "[zeppole] ERROR: System image layer incomplete (often caused by an earlier docker/disk failure)."
+  fi
+  echo "FAILED" > "${WORKDIR}/status"
+  exit "${code}"
+}
+trap on_fail ERR
+
 phase initializing
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 echo "[zeppole] build ${BUILD_ID} starting"
 echo "[zeppole] api=${API_LEVEL} codename=${CODENAME} image=${SYSTEM_IMAGE} abi=${ABI} channel=${CHANNEL}"
 
+/opt/zeppole-scripts/check-disk.sh
+
 BLD="${WORKDIR}/bld"
 rm -rf "$BLD"
 mkdir -p "$BLD"
 
-# emu-docker selects system image by codename regex (e.g. U, V, B).
 export PATH="/opt/venv/bin:${PATH}"
 EMU_DOCKER="/opt/venv/bin/emu-docker"
 if [ ! -x "$EMU_DOCKER" ]; then
@@ -45,10 +65,10 @@ fi
 phase sdk_download
 echo "[zeppole] running emu-docker create (accept licenses first run)..."
 echo "[zeppole] pattern: ${IMG_PATTERN}"
-yes | "$EMU_DOCKER" create "$CHANNEL" "$IMG_PATTERN" --dest "$BLD" --no-metrics || {
+if ! yes | "$EMU_DOCKER" create "$CHANNEL" "$IMG_PATTERN" --dest "$BLD" --no-metrics; then
   echo "[zeppole] emu-docker create failed"
   exit 1
-}
+fi
 
 BASE_TAG="zeppole-google-base:${BUILD_ID}"
 phase docker_base
@@ -69,3 +89,8 @@ fi
 phase complete
 echo "[zeppole] build complete: ${TAG}"
 echo "SUCCEEDED" > "${WORKDIR}/status"
+trap - ERR
+
+# Success: drop large workspace tree; tagged images remain on the host
+rm -rf "$BLD"
+echo "[zeppole] Removed workspace ${BLD} (images kept: ${TAG})"
