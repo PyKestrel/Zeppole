@@ -1,6 +1,6 @@
 /**
- * Runs on a host with Docker (socket mounted). The Zeppole API calls this service
- * to start/stop docker-android style containers and discover published ports.
+ * Runs on a host with Docker (socket mounted). Deploys Google aemu emulator pods:
+ * emulator container + ws-scrcpy sidecar on a private Docker network.
  */
 import { execFile } from "node:child_process";
 import { access } from "node:fs/promises";
@@ -13,9 +13,10 @@ const PORT = Number(process.env.PORT ?? 9100);
 const TOKEN = (process.env.BRIDGE_TOKEN ?? process.env.ZEPPOLE_EMULATOR_BRIDGE_TOKEN)?.trim();
 const PUBLIC_SCHEME = (process.env.PUBLIC_SCHEME ?? "http").replace(/:+$/, "");
 const PUBLIC_HOST = (process.env.PUBLIC_HOST ?? "127.0.0.1").trim();
-const DEFAULT_IMAGE =
-  process.env.EMULATOR_IMAGE?.trim() ?? "budtmo/docker-android:emulator_14.0";
+const WSSCRCPY_IMAGE =
+  process.env.ZEPPOLE_WSSCRCPY_IMAGE?.trim() ?? "zeppole-ws-scrcpy:latest";
 const DOCKER_TIMEOUT_MS = Number(process.env.DOCKER_TIMEOUT_MS ?? 600_000);
+const WSSCRCPY_PORT = Number(process.env.WSSCRCPY_PORT ?? 8000);
 
 function authHeaderOk(auth: string | undefined): boolean {
   if (!TOKEN) return false;
@@ -47,8 +48,11 @@ type KvmProbeResult = {
 };
 
 function assumeKvmEnabled(): boolean {
-  const v = process.env.EMULATOR_ASSUME_KVM?.trim().toLowerCase();
-  return v === "1" || v === "true" || v === "yes";
+  for (const key of ["EMULATOR_ASSUME_KVM", "EMULATOR_USE_KVM"]) {
+    const v = process.env[key]?.trim().toLowerCase();
+    if (v === "1" || v === "true" || v === "yes") return true;
+  }
+  return false;
 }
 
 async function kvmVisibleInBridge(): Promise<boolean> {
@@ -60,7 +64,6 @@ async function kvmVisibleInBridge(): Promise<boolean> {
   }
 }
 
-/** True when the Docker daemon (via socket) can use /dev/kvm for emulator containers. */
 async function probeKvm(force = false): Promise<KvmProbeResult> {
   if (!force && kvmProbeCache && Date.now() - kvmProbeCache.at < KVM_PROBE_CACHE_MS) {
     return kvmProbeCache.result;
@@ -81,7 +84,7 @@ async function probeKvm(force = false): Promise<KvmProbeResult> {
     const result: KvmProbeResult = {
       ok: true,
       visibleInBridge: false,
-      detail: "EMULATOR_ASSUME_KVM is set",
+      detail: "EMULATOR_ASSUME_KVM / EMULATOR_USE_KVM is set",
     };
     kvmProbeCache = { at: Date.now(), result };
     return result;
@@ -130,9 +133,8 @@ async function canPassKvmToEmulator(): Promise<boolean> {
 }
 
 const KVM_REQUIRED_MSG =
-  "budtmo/docker-android needs /dev/kvm on the Docker host. The noVNC page will show only the splash screen without it. " +
-  "On a Linux VM with KVM, ensure Docker runs on that VM and merge docker-compose.kvm.yml (mounts /dev/kvm into emulator-bridge), " +
-  "or register an external noVNC URL. Docker Desktop on Windows/macOS cannot pass KVM to containers.";
+  "Google Android emulators need /dev/kvm on the Docker host. Use a Linux host with KVM, merge docker-compose.kvm.yml, " +
+  "or register an external ws-scrcpy URL manually. Docker Desktop on Windows/macOS cannot pass KVM to containers.";
 
 function parseHostPort(dockerPortLine: string): string {
   const line = dockerPortLine.trim().split("\n").pop() ?? "";
@@ -140,20 +142,32 @@ function parseHostPort(dockerPortLine: string): string {
   return parts[parts.length - 1]?.trim() ?? "";
 }
 
+function displayContainerName(containerName: string): string {
+  return `${containerName}-display`;
+}
+
+function networkName(containerName: string): string {
+  return `${containerName}-net`;
+}
+
 async function containerState(
   containerName: string,
 ): Promise<{ status: string; error: string; running: boolean }> {
-  const { stdout } = await docker(
-    [
-      "inspect",
-      containerName,
-      "--format",
-      "{{.State.Status}}|{{.State.Error}}|{{.State.Running}}",
-    ],
-    30_000,
-  );
-  const [status = "", error = "", running = "false"] = stdout.trim().split("|");
-  return { status, error, running: running === "true" };
+  try {
+    const { stdout } = await docker(
+      [
+        "inspect",
+        containerName,
+        "--format",
+        "{{.State.Status}}|{{.State.Error}}|{{.State.Running}}",
+      ],
+      30_000,
+    );
+    const [status = "", error = "", running = "false"] = stdout.trim().split("|");
+    return { status, error, running: running === "true" };
+  } catch {
+    return { status: "missing", error: "", running: false };
+  }
 }
 
 async function tailContainerLogs(containerName: string, lines = 40): Promise<string> {
@@ -173,6 +187,20 @@ async function removeContainerBestEffort(containerName: string): Promise<void> {
   }
 }
 
+async function removeNetworkBestEffort(net: string): Promise<void> {
+  try {
+    await docker(["network", "rm", net], 60_000);
+  } catch {
+    /* ignore */
+  }
+}
+
+async function teardownPod(containerName: string): Promise<void> {
+  await removeContainerBestEffort(displayContainerName(containerName));
+  await removeContainerBestEffort(containerName);
+  await removeNetworkBestEffort(networkName(containerName));
+}
+
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "info" } });
 
 app.addHook("preHandler", async (request, reply) => {
@@ -189,158 +217,154 @@ app.get("/health", async () => {
     service: "zeppole-emulator-bridge",
     kvmAvailable: kvm.ok,
     kvm,
+    wsScrcpyImage: WSSCRCPY_IMAGE,
   };
 });
-
-function isGoogleAemuImage(image: string, runtime?: string): boolean {
-  if (runtime === "google-aemu") return true;
-  if (runtime === "docker-android") return false;
-  return /zeppole-google|android-emulator-268719|\/images\//i.test(image);
-}
 
 app.post<{
   Body: {
     containerName: string;
-    emulatorDevice?: string;
     image?: string;
-    runtime?: "docker-android" | "google-aemu";
   };
 }>("/v1/deploy", async (request, reply) => {
-    const { containerName, emulatorDevice, image, runtime } = request.body ?? ({} as never);
-    if (!containerName || !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{1,200}$/.test(containerName)) {
-      reply.code(400).send({ error: "Invalid containerName" });
-      return;
-    }
+  const { containerName, image } = request.body ?? ({} as never);
+  if (!containerName || !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{1,200}$/.test(containerName)) {
+    reply.code(400).send({ error: "Invalid containerName" });
+    return;
+  }
 
-    const img = image?.trim() || DEFAULT_IMAGE;
-    const googleRuntime = isGoogleAemuImage(img, runtime);
-    if (!googleRuntime && (!emulatorDevice || emulatorDevice.length > 300)) {
-      reply.code(400).send({ error: "Invalid emulatorDevice" });
-      return;
-    }
-
-    const useKvm = await canPassKvmToEmulator();
-    if (!useKvm) {
-      request.log.warn({ containerName }, "deploy rejected: kvm not available");
-      reply.code(503).send({ error: KVM_REQUIRED_MSG });
-      return;
-    }
-
-    request.log.info(
-      { containerName, img, useKvm, emulatorDevice, googleRuntime },
-      "emulator deploy started",
-    );
-
-    await removeContainerBestEffort(containerName);
-
-    const runArgs = ["run", "-d", "--name", containerName, "--restart", "unless-stopped"];
-
-    if (googleRuntime) {
-      runArgs.push("-p", "0:6080", "-p", "0:4723", "-p", "0:5555", "-p", "0:8554");
-      runArgs.push("-e", "ZEPPOLE_ENABLE_APPIUM=true", "-e", "ZEPPOLE_ENABLE_NOVNC=true");
-    } else {
-      runArgs.push(
-        "-p",
-        "0:6080",
-        "-p",
-        "0:4723",
-        "-e",
-        "WEB_VNC=true",
-        "-e",
-        "APPIUM=true",
-        "-e",
-        `EMULATOR_DEVICE=${emulatorDevice}`,
-      );
-    }
-
-    runArgs.push("--device", "/dev/kvm");
-    runArgs.push(img);
-
-    try {
-      request.log.info({ containerName }, "docker run");
-      await docker(runArgs);
-    } catch (e) {
-      const err = e as Error & { stderr?: string };
-      const detail = [err.message, err.stderr?.trim()].filter(Boolean).join(" — ");
-      request.log.error({ err: e, containerName }, "docker run failed");
-      await removeContainerBestEffort(containerName);
-      reply.code(500).send({
-        error: detail || "docker run failed",
-      });
-      return;
-    }
-
-    const state = await containerState(containerName);
-    if (!state.running) {
-      const logs = await tailContainerLogs(containerName);
-      const msg = [
-        state.error || `Container is ${state.status || "not running"} after docker run`,
-        logs ? `Logs:\n${logs}` : "",
-      ]
-        .filter(Boolean)
-        .join("\n\n");
-      request.log.error({ containerName, state, logs: logs.slice(0, 500) }, "emulator container did not start");
-      await removeContainerBestEffort(containerName);
-      reply.code(500).send({ error: msg });
-      return;
-    }
-
-    let p6080 = "";
-    let p4723 = "";
-    try {
-      const r6080 = await docker(["port", containerName, "6080"], 30_000);
-      p6080 = parseHostPort(r6080.stdout);
-      const r4723 = await docker(["port", containerName, "4723"], 30_000);
-      p4723 = parseHostPort(r4723.stdout);
-    } catch (e) {
-      request.log.error(e);
-      await removeContainerBestEffort(containerName);
-      reply.code(500).send({ error: "Could not read published ports (is the image exposing 6080/4723?)" });
-      return;
-    }
-
-    if (!p6080 || !p4723) {
-      await removeContainerBestEffort(containerName);
-      reply.code(500).send({ error: "Published ports missing" });
-      return;
-    }
-
-    for (let i = 0; i < 12; i++) {
-      await new Promise((r) => setTimeout(r, 5000));
-      try {
-        const { stdout: deviceLog } = await docker(
-          ["exec", containerName, "cat", "/home/androidusr/logs/device.stdout.log"],
-          30_000,
-        );
-        if (deviceLog.includes("RuntimeError: /dev/kvm cannot be found!")) {
-          await removeContainerBestEffort(containerName);
-          reply.code(503).send({ error: KVM_REQUIRED_MSG });
-          return;
-        }
-        if (deviceLog.includes("Traceback (most recent call last)")) {
-          const tail = deviceLog.slice(-800);
-          await removeContainerBestEffort(containerName);
-          reply.code(500).send({ error: `Emulator failed to start:\n${tail}` });
-          return;
-        }
-      } catch {
-        /* log not ready yet */
-      }
-    }
-
-    const displayUrl = `${PUBLIC_SCHEME}://${PUBLIC_HOST}:${p6080}/?autoconnect=true`;
-    // Appium 2.x (docker-android): automation clients use this base; browsers should use /status instead of /.
-    const appiumUrl = `${PUBLIC_SCHEME}://${PUBLIC_HOST}:${p4723}/`;
-
-    request.log.info({ containerName, displayUrl, appiumUrl }, "emulator deploy finished");
-    return reply.send({
-      containerName,
-      displayUrl,
-      appiumUrl,
-      dockerImage: img,
+  const img = image?.trim();
+  if (!img) {
+    reply.code(400).send({
+      error: "image is required. Build a Google aemu image on the Emulator images page first.",
     });
-  },
-);
+    return;
+  }
+
+  const useKvm = await canPassKvmToEmulator();
+  if (!useKvm) {
+    request.log.warn({ containerName }, "deploy rejected: kvm not available");
+    reply.code(503).send({ error: KVM_REQUIRED_MSG });
+    return;
+  }
+
+  const net = networkName(containerName);
+  const displayName = displayContainerName(containerName);
+
+  request.log.info({ containerName, img, net, displayName }, "emulator pod deploy started");
+  await teardownPod(containerName);
+
+  try {
+    await docker(["network", "create", net], 60_000);
+  } catch (e) {
+    const err = e as Error & { stderr?: string };
+    reply.code(500).send({ error: `Failed to create network: ${err.message}` });
+    return;
+  }
+
+  const emuArgs = [
+    "run",
+    "-d",
+    "--name",
+    containerName,
+    "--network",
+    net,
+    "--restart",
+    "unless-stopped",
+    "--device",
+    "/dev/kvm",
+    img,
+  ];
+
+  try {
+    await docker(emuArgs);
+  } catch (e) {
+    const err = e as Error & { stderr?: string };
+    await teardownPod(containerName);
+    reply.code(500).send({ error: [err.message, err.stderr?.trim()].filter(Boolean).join(" — ") });
+    return;
+  }
+
+  const emuState = await containerState(containerName);
+  if (!emuState.running) {
+    const logs = await tailContainerLogs(containerName);
+    await teardownPod(containerName);
+    reply.code(500).send({
+      error: [emuState.error || `Emulator container ${emuState.status}`, logs].filter(Boolean).join("\n\n"),
+    });
+    return;
+  }
+
+  const sidecarArgs = [
+    "run",
+    "-d",
+    "--name",
+    displayName,
+    "--network",
+    net,
+    "--restart",
+    "unless-stopped",
+    "-p",
+    `0:${WSSCRCPY_PORT}`,
+    "-e",
+    `ADB_HOST=${containerName}`,
+    WSSCRCPY_IMAGE,
+  ];
+
+  try {
+    await docker(sidecarArgs);
+  } catch (e) {
+    const err = e as Error & { stderr?: string };
+    await teardownPod(containerName);
+    reply.code(500).send({
+      error: `ws-scrcpy sidecar failed: ${[err.message, err.stderr?.trim()].filter(Boolean).join(" — ")}`,
+    });
+    return;
+  }
+
+  let hostPort = "";
+  try {
+    const r = await docker(["port", displayName, String(WSSCRCPY_PORT)], 30_000);
+    hostPort = parseHostPort(r.stdout);
+  } catch (e) {
+    request.log.error(e);
+    await teardownPod(containerName);
+    reply.code(500).send({ error: "Could not read ws-scrcpy published port" });
+    return;
+  }
+
+  if (!hostPort) {
+    await teardownPod(containerName);
+    reply.code(500).send({ error: "ws-scrcpy port not published" });
+    return;
+  }
+
+  for (let i = 0; i < 48; i++) {
+    const sidecar = await containerState(displayName);
+    if (!sidecar.running) {
+      const logs = await tailContainerLogs(displayName);
+      await teardownPod(containerName);
+      reply.code(500).send({ error: `ws-scrcpy sidecar stopped:\n${logs.slice(-1200)}` });
+      return;
+    }
+    const logs = await tailContainerLogs(displayName, 200);
+    if (logs.includes("[zeppole-ws-scrcpy] emulator ready")) {
+      break;
+    }
+    if (i === 47) {
+      request.log.warn({ containerName }, "ws-scrcpy sidecar still starting; returning URL anyway");
+    }
+    await new Promise((r) => setTimeout(r, 5000));
+  }
+
+  const displayUrl = `${PUBLIC_SCHEME}://${PUBLIC_HOST}:${hostPort}/`;
+  request.log.info({ containerName, displayUrl }, "emulator pod deploy finished");
+  return reply.send({
+    containerName,
+    displayUrl,
+    dockerImage: img,
+  });
+});
 
 app.post<{ Body: { containerName: string } }>("/v1/stop", async (request, reply) => {
   const { containerName } = request.body ?? ({} as never);
@@ -348,11 +372,7 @@ app.post<{ Body: { containerName: string } }>("/v1/stop", async (request, reply)
     reply.code(400).send({ error: "Invalid containerName" });
     return;
   }
-  try {
-    await docker(["rm", "-f", containerName], 120_000);
-  } catch (e) {
-    request.log.warn(e);
-  }
+  await teardownPod(containerName);
   return reply.send({ ok: true });
 });
 
@@ -369,9 +389,7 @@ async function main() {
     console.info(`[zeppole-emulator-bridge] kvmProbeError=${kvm.lastError}`);
   }
   if (!kvm.ok) {
-    app.log.warn(
-      "KVM not available for docker-android deploy. Merge docker-compose.kvm.yml or set EMULATOR_ASSUME_KVM=true if you verified KVM manually.",
-    );
+    app.log.warn("KVM not available. Merge docker-compose.kvm.yml or set EMULATOR_ASSUME_KVM=true.");
   }
   await app.listen({ port: PORT, host: "0.0.0.0" });
   app.log.info(`Emulator bridge listening on :${PORT}`);

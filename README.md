@@ -9,7 +9,9 @@ Zeppole is a self-hosted **Android UI testing control plane**: projects, test ca
 | `platform/control-plane/api` | Fastify REST API (`/api/v1`), OpenAPI UI at `/api/docs` |
 | `platform/control-plane/web` | React management console |
 | `platform/execution-workers/worker` | Poll-based worker that claims jobs and publishes results |
-| `platform/device-pool/bootstrap-source` | One-time vendor snapshot used for Android emulator images (telemetry stripped in Python bootstrap) |
+| `platform/device-pool/google-emulator-builder` | Builds Google aemu images via android-emulator-container-scripts |
+| `platform/device-pool/ws-scrcpy` | ws-scrcpy sidecar for browser display/control (port 8000) |
+| `platform/device-pool/emulator-bridge` | Deploys Google aemu + ws-scrcpy pods from the Emulators UI |
 | `platform/docs` | Architecture, deployment, operations, security |
 | `deploy/helm/zeppole` | Helm chart (optional) |
 | `scripts/check-no-telemetry.mjs` | CI guard against telemetry patterns |
@@ -54,12 +56,12 @@ npm run zeppole:up
 This will:
 
 1. Create `zeppole.autopilot.env` (once) with **JWT**, **emulator-bridge token**, and a random **admin password** — and print the sign-in line to your terminal.
-2. Start Postgres, API, Web, **emulator-bridge** (Docker socket), **worker-bootstrap** (creates admin + automation device + writes token to a shared volume), and the **worker** (reads the token from that volume — no copy/paste).
+2. Start Postgres, API, Web, **google-emulator-builder**, **ws-scrcpy**, **emulator-bridge** (Docker socket), **worker-bootstrap** (creates admin + automation device + writes token to a shared volume), and the **worker** (reads the token from that volume — no copy/paste).
 3. Wire the API to the bridge so the **Emulators** page can start containers from the UI.
 
 - Web UI: `http://localhost:8080` — sign in as **`admin@zeppole.local`** (password shown once when the env file is created, and stored as `ZEPPOLE_ADMIN_PASSWORD` in `zeppole.autopilot.env`).
-- noVNC / Appium links use `ZEPPOLE_PUBLIC_HOST` (default `localhost`); change it in the env file if you browse from another machine.
-- **Google system images:** default emulator is API 34 (`emulator_14.0`). For custom API levels, Play Store images, and official [android-emulator-container-scripts](https://github.com/google/android-emulator-container-scripts) containers with browser display + Appium, use **Emulator images** in the UI (requires `google-emulator-builder` from `npm run zeppole:up`). See `platform/device-pool/docs/google-system-images.md`.
+- ws-scrcpy display links use `ZEPPOLE_PUBLIC_HOST` (default `localhost`); change it in the env file if you browse from another machine. In ws-scrcpy, select **proxy over adb** for emulators.
+- **Google system images:** build images on **Emulator images** (requires `google-emulator-builder` from `npm run zeppole:up`), then deploy on **Emulators**. See `platform/device-pool/docs/google-system-images.md`.
 
 Full wipe and recreate:
 
@@ -117,4 +119,4 @@ See [PRODUCTION.md](PRODUCTION.md) for TLS, secrets, `TRUST_PROXY`, and JWT requ
 
 ## License
 
-Zeppole-authored code is licensed under Apache 2.0 (`LICENSE`). Third-party materials are described in `NOTICE`. The device bootstrap snapshot retains upstream copyright notices in its tree; analytics code paths were removed for Zeppole.
+Zeppole-authored code is licensed under Apache 2.0 (`LICENSE`). Third-party materials are described in `NOTICE`.

@@ -13,15 +13,12 @@ const manualBody = z.object({
   mode: z.literal("manual"),
   name: z.string().min(1).max(200),
   displayUrl: z.string().url(),
-  appiumUrl: z.string().url().optional(),
 });
 
 const dockerBody = z.object({
   mode: z.literal("docker"),
   name: z.string().min(1).max(200),
-  emulatorDevice: z.string().min(1).max(200).optional(),
-  image: z.string().min(1).max(300).optional(),
-  runtime: z.enum(["docker-android", "google-aemu"]).optional(),
+  image: z.string().min(1).max(300),
 });
 
 const createBody = z.discriminatedUnion("mode", [manualBody, dockerBody]);
@@ -64,7 +61,7 @@ export const emulatorsPlugin: FastifyPluginAsync = async (app) => {
     "/emulators",
     {
       onRequest: [app.authenticate],
-      schema: { tags: ["emulators"], summary: "Register manual URLs or deploy via Docker bridge" },
+      schema: { tags: ["emulators"], summary: "Register manual URLs or deploy Google aemu via Docker bridge" },
     },
     async (request, reply) => {
       if (!assertManage(request.user.role, reply)) return;
@@ -77,7 +74,6 @@ export const emulatorsPlugin: FastifyPluginAsync = async (app) => {
             mode: "manual",
             status: "RUNNING",
             displayUrl: body.displayUrl,
-            appiumUrl: body.appiumUrl ?? null,
           },
         });
         reply.code(201).send({ emulator: row });
@@ -96,20 +92,9 @@ export const emulatorsPlugin: FastifyPluginAsync = async (app) => {
         reply.code(503).send({
           error:
             health.detail ??
-            "Docker host has no KVM for budtmo/docker-android (/dev/kvm). Use a Linux host with KVM, merge docker-compose.kvm.yml, or register an external noVNC URL.",
+            "Docker host has no KVM (/dev/kvm). Use a Linux host with KVM, merge docker-compose.kvm.yml, or register an external ws-scrcpy URL.",
           kvmError: health.lastError,
         });
-        return;
-      }
-
-      const runtime =
-        body.runtime ??
-        (body.image && /zeppole-google|android-emulator-268719/i.test(body.image)
-          ? "google-aemu"
-          : "docker-android");
-
-      if (runtime === "docker-android" && !body.emulatorDevice) {
-        reply.code(400).send({ error: "emulatorDevice is required for docker-android runtime" });
         return;
       }
 
@@ -118,8 +103,7 @@ export const emulatorsPlugin: FastifyPluginAsync = async (app) => {
           name: body.name,
           mode: "docker",
           status: "STARTING",
-          emulatorDevice: body.emulatorDevice ?? "Google AEMU",
-          dockerImage: body.image ?? null,
+          dockerImage: body.image,
         },
       });
 
@@ -131,10 +115,8 @@ export const emulatorsPlugin: FastifyPluginAsync = async (app) => {
           const deployed = await bridgeDeploy({
             instanceId: draft.id,
             name: body.name,
-            emulatorDevice: body.emulatorDevice,
             image: body.image,
             containerName,
-            runtime,
           });
 
           await app.prisma.emulatorInstance.update({
@@ -143,7 +125,7 @@ export const emulatorsPlugin: FastifyPluginAsync = async (app) => {
               status: "RUNNING" satisfies EmulatorStatus,
               containerName: deployed.containerName,
               displayUrl: deployed.displayUrl,
-              appiumUrl: deployed.appiumUrl,
+              appiumUrl: null,
               dockerImage: deployed.dockerImage,
               errorMessage: null,
             },
@@ -197,7 +179,6 @@ export const emulatorsPlugin: FastifyPluginAsync = async (app) => {
           data: {
             status: "STOPPED",
             displayUrl: null,
-            appiumUrl: null,
             errorMessage: null,
           },
         });

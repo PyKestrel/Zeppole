@@ -72,8 +72,6 @@ export type EmulatorImageBuild = {
   abi: string;
   emulatorChannel: string;
   pageSize: string | null;
-  enableNovnc: boolean;
-  enableAppium: boolean;
   dockerTag: string;
   imageRef: string | null;
   buildLog: string | null;
@@ -93,9 +91,10 @@ export type EmulatorImagesLiveMeta = {
 
 export type GoogleAemuCatalog = {
   source: string;
+  dynamic?: boolean;
   emulatorChannels: { id: string; label: string }[];
   abis: { id: string; label: string }[];
-  systemImages: { id: string; label: string; description: string }[];
+  systemImages: { id: string; label: string; description?: string }[];
   pageSizes: { id: string; label: string }[];
   apiLevels: { apiLevel: number; codename: string; androidVersion: string }[];
 };

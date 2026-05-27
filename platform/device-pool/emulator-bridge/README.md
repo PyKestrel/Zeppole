@@ -1,6 +1,6 @@
 # Zeppole emulator bridge
 
-Small sidecar that runs on a host with **Docker** (socket mounted). The Zeppole API calls it to start and stop **docker-android**-style containers and to discover published **6080** (noVNC) and **4723** (Appium) ports.
+Small sidecar that runs on a host with **Docker** (socket mounted). The Zeppole API calls it to start and stop **Google aemu + ws-scrcpy** pods and to discover the published **8000** (ws-scrcpy) display port.
 
 ## Configure the control plane API
 
@@ -16,8 +16,21 @@ Set on the API service:
 | `BRIDGE_TOKEN` | **Required.** Bearer token (min 8 chars) shared with the API. |
 | `PUBLIC_SCHEME` | Default `http`. |
 | `PUBLIC_HOST` | Hostname or IP users and browsers use to reach published ports (e.g. `localhost` or your Proxmox VM IP). |
-| `EMULATOR_IMAGE` | Default `budtmo/docker-android:emulator_11.0`. |
+| `ZEPPOLE_WSSCRCPY_IMAGE` | ws-scrcpy sidecar image (default `zeppole-ws-scrcpy:latest`). Built by Compose service `ws-scrcpy`. |
+| `EMULATOR_USE_KVM` | When `true`, pass `/dev/kvm` into emulator containers (Linux hosts only). |
 | `PORT` | Listen port (default `9100`). |
+
+Deploy requests must include a **Google aemu image tag** (from Emulator images builds or an explicit registry tag). There is no default budtmo/docker-android image.
+
+## Deploy pod layout
+
+Each deploy creates:
+
+1. Docker network `zeppole-emu-{shortId}`
+2. Emulator container on that network (KVM, ADB internal on 5555)
+3. ws-scrcpy sidecar `{name}-display` with `-p 0:8000`, `adb connect` to the emulator
+
+`displayUrl` is `{PUBLIC_SCHEME}://{PUBLIC_HOST}:{publishedPort}/`.
 
 ## Docker Compose (profile `emulators`)
 
@@ -27,15 +40,22 @@ From the repo root, with a `.env` that sets matching tokens:
 ZEPPOLE_EMULATOR_BRIDGE_TOKEN=your-long-random-secret
 ZEPPOLE_EMULATOR_BRIDGE_URL=http://emulator-bridge:9100
 ZEPPOLE_PUBLIC_HOST=localhost
+ZEPPOLE_WSSCRCPY_IMAGE=zeppole-ws-scrcpy:latest
 ```
 
 Then:
 
 ```bash
-docker compose --profile emulators up --build
+docker compose --profile emulators --profile builders up --build
 ```
 
-Expose the published emulator ports from the **Docker host** to your workstation if needed (SSH tunnel, firewall rules).
+Expose the published ws-scrcpy ports from the **Docker host** to your workstation if needed (SSH tunnel, firewall rules).
+
+## ws-scrcpy operator notes
+
+- On first connect, choose **proxy over adb** for Google emulators.
+- Prefer **WebCodecs** decoder in Chrome for lower latency.
+- ws-scrcpy has **no auth** — do not expose port 8000 on the public internet without a reverse proxy.
 
 ## Linux / KVM
 

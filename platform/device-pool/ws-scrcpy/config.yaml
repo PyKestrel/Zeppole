@@ -1,0 +1,6 @@
+# Zeppole ws-scrcpy sidecar — Android emulator display/control
+runGoogTracker: true
+runApplTracker: false
+server:
+  - secure: false
+    port: 8000

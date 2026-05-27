@@ -18,13 +18,11 @@ const createBody = z.object({
   name: z.string().min(1).max(200),
   apiLevel: z.number().int().min(28).max(40),
   codename: z.string().min(1).max(10),
-  systemImage: z.enum(["google_apis", "google_apis_playstore", "aosp"]),
-  abi: z.enum(["x86_64", "x86"]).default("x86_64"),
+  systemImage: z.string().min(1).max(80),
+  abi: z.string().min(1).max(20).default("x86_64"),
   emulatorChannel: z.enum(["stable", "dev", "canary"]).default("stable"),
   pageSize: z.string().max(20).optional(),
   dockerTag: z.string().min(1).max(200),
-  enableNovnc: z.boolean().default(true),
-  enableAppium: z.boolean().default(true),
 });
 
 export const emulatorImagesPlugin: FastifyPluginAsync = async (app) => {
@@ -137,7 +135,7 @@ export const emulatorImagesPlugin: FastifyPluginAsync = async (app) => {
       onRequest: [app.authenticate],
       schema: {
         tags: ["emulator-images"],
-        summary: "Start building a Google aemu image with Zeppole overlay (noVNC + Appium)",
+        summary: "Start building a Google aemu image (display via ws-scrcpy sidecar at deploy time)",
       },
     },
     async (request, reply) => {
@@ -163,8 +161,6 @@ export const emulatorImagesPlugin: FastifyPluginAsync = async (app) => {
           abi: body.abi,
           emulatorChannel: body.emulatorChannel,
           pageSize: body.pageSize ?? null,
-          enableNovnc: body.enableNovnc,
-          enableAppium: body.enableAppium,
           dockerTag: body.dockerTag,
         },
       });
@@ -179,8 +175,6 @@ export const emulatorImagesPlugin: FastifyPluginAsync = async (app) => {
           emulatorChannel: body.emulatorChannel,
           pageSize: body.pageSize ?? "",
           dockerTag: body.dockerTag,
-          enableNovnc: body.enableNovnc,
-          enableAppium: body.enableAppium,
         });
       } catch (e) {
         await app.prisma.emulatorImageBuild.update({

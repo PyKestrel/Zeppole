@@ -4,15 +4,13 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import Fastify from "fastify";
+import { fetchCatalog } from "./catalog.js";
 
 const execFileAsync = promisify(execFile);
 
 const PORT = Number(process.env.PORT ?? 9200);
 const TOKEN = (process.env.BUILDER_TOKEN ?? process.env.ZEPPOLE_IMAGE_BUILDER_TOKEN)?.trim();
 const WORK_ROOT = process.env.WORK_ROOT ?? "/work/builds";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const catalogPath = path.join(__dirname, "..", "catalog.json");
 
 type BuildJob = {
   buildId: string;
@@ -23,8 +21,6 @@ type BuildJob = {
   emulatorChannel: string;
   pageSize: string;
   dockerTag: string;
-  enableNovnc: boolean;
-  enableAppium: boolean;
 };
 
 type RunningBuild = {
@@ -93,8 +89,6 @@ function startBuild(job: BuildJob): void {
     job.emulatorChannel,
     job.pageSize,
     job.dockerTag,
-    job.enableNovnc ? "true" : "false",
-    job.enableAppium ? "true" : "false",
     path.join(dir, "build.log"),
   ];
 
@@ -124,10 +118,7 @@ app.addHook("preHandler", async (request, reply) => {
 
 app.get("/health", async () => ({ status: "ok", service: "zeppole-google-emulator-builder" }));
 
-app.get("/v1/catalog", async () => {
-  const raw = await fs.readFile(catalogPath, "utf8");
-  return JSON.parse(raw) as unknown;
-});
+app.get("/v1/catalog", async () => fetchCatalog());
 
 app.get("/v1/preflight", async () => {
   const minGb = Number(process.env.ZEPPOLE_BUILD_MIN_FREE_GB ?? 40);

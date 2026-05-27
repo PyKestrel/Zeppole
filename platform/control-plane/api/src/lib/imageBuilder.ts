@@ -17,8 +17,6 @@ export type ImageBuildJob = {
   emulatorChannel: string;
   pageSize: string;
   dockerTag: string;
-  enableNovnc: boolean;
-  enableAppium: boolean;
 };
 
 async function builderFetch<T>(path: string, init?: RequestInit): Promise<T> {

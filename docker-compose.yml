@@ -81,6 +81,13 @@ services:
     ports:
       - "9200:9200"
 
+  # ws-scrcpy sidecar for browser display/control (one per deployed emulator)
+  ws-scrcpy:
+    profiles: ["emulators", "builders"]
+    build:
+      context: ./platform/device-pool/ws-scrcpy
+    image: zeppole-ws-scrcpy:latest
+
   # Optional: `docker compose --profile emulators up` — wire API env ZEPPOLE_EMULATOR_BRIDGE_* to this service
   emulator-bridge:
     profiles: ["emulators"]
@@ -94,10 +101,12 @@ services:
       ZEPPOLE_EMULATOR_BRIDGE_TOKEN: ${ZEPPOLE_EMULATOR_BRIDGE_TOKEN:-}
       PUBLIC_SCHEME: ${ZEPPOLE_PUBLIC_SCHEME:-http}
       PUBLIC_HOST: ${ZEPPOLE_PUBLIC_HOST:-localhost}
-      EMULATOR_IMAGE: ${ZEPPOLE_EMULATOR_IMAGE:-budtmo/docker-android:emulator_14.0}
+      ZEPPOLE_WSSCRCPY_IMAGE: ${ZEPPOLE_WSSCRCPY_IMAGE:-zeppole-ws-scrcpy:latest}
       # Only enable on Linux hosts with KVM: EMULATOR_USE_KVM=true plus devices: [/dev/kvm:/dev/kvm]
       EMULATOR_USE_KVM: ${EMULATOR_USE_KVM:-false}
       LOG_LEVEL: info
+    depends_on:
+      - ws-scrcpy
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     ports:

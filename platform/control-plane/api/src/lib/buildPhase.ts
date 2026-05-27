@@ -27,6 +27,9 @@ export function derivePhaseFromLog(log: string | null | undefined, status: strin
   if (text.includes("build complete") || text.includes("PHASE:complete")) return "complete";
   if (text.includes("PHASE:zeppole_overlay") || text.includes("applying Zeppole overlay")) return "zeppole_overlay";
   if (text.includes("PHASE:docker_base") || text.includes("docker build base")) return "docker_base";
+  if (text.includes("docker build sys_img") || text.includes("Building ") && text.includes("sys_img"))
+    return "docker_base";
+  if (text.includes("platform-tools") || text.includes("packaging system image")) return "sdk_download";
   if (text.includes("PHASE:sdk_download") || text.includes("emu-docker create")) return "sdk_download";
   if (text.includes("PHASE:initializing") || text.includes("build") && text.includes("starting")) return "initializing";
   return "unknown";

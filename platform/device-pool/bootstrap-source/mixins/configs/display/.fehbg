@@ -1,3 +1,0 @@
-#!/bin/sh
-
-"feh" "--bg-max" "${APP_PATH}/mixins/configs/display/background.png"

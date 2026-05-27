@@ -21,12 +21,21 @@ def patch_system_image_container() -> None:
         'return self.system_image_zip.props.get("ro.build.version.incremental") or '
         'self.system_image_zip.props.get("ro.build.version.sdk") or "latest"',
     )
-    old = '        return self.image_labels()["ro.build.version.incremental"]'
-    new = (
-        '        labels = self.image_labels()\n'
-        '        return labels.get("ro.build.version.incremental") or '
-        'labels.get("ro.build.version.sdk") or "latest"'
-    )
+    old = """        if super().available():
+            return self.image_labels()["ro.build.version.incremental"]
+
+        # Unknown, revert to latest.
+        return "latest\""""
+    new = """        if super().available():
+            labels = self.image_labels()
+            return (
+                labels.get("ro.build.version.incremental")
+                or labels.get("ro.build.version.sdk")
+                or "latest"
+            )
+
+        # Unknown, revert to latest.
+        return "latest\""""
     if old not in text:
         raise RuntimeError("system_image_container.py: expected docker_tag branch missing")
     text = text.replace(old, new)

@@ -29,8 +29,6 @@ export function EmulatorImagesPage() {
   const [channel, setChannel] = useState("stable");
   const [pageSize, setPageSize] = useState("");
   const [dockerTag, setDockerTag] = useState("zeppole-google:34-playstore");
-  const [enableNovnc, setEnableNovnc] = useState(true);
-  const [enableAppium, setEnableAppium] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
   const hasActiveBuild = builds.some((b) => b.status === "BUILDING");
@@ -63,17 +61,14 @@ export function EmulatorImagesPage() {
       });
   }, []);
 
-  const loadDetail = useCallback(
-    (buildId: string) => {
-      return api<{ build: EmulatorImageBuild; live: EmulatorImagesLiveMeta }>(
-        `/emulator-images/builds/${buildId}`,
-      ).then((r) => {
-        setBuilds((prev) => prev.map((b) => (b.id === buildId ? r.build : b)));
-        setLive(r.live);
-      });
-    },
-    [],
-  );
+  const loadDetail = useCallback((buildId: string) => {
+    return api<{ build: EmulatorImageBuild; live: EmulatorImagesLiveMeta }>(
+      `/emulator-images/builds/${buildId}`,
+    ).then((r) => {
+      setBuilds((prev) => prev.map((b) => (b.id === buildId ? r.build : b)));
+      setLive(r.live);
+    });
+  }, []);
 
   const load = useCallback(() => {
     void loadList();
@@ -127,8 +122,6 @@ export function EmulatorImagesPage() {
           emulatorChannel: channel,
           ...(pageSize ? { pageSize } : {}),
           dockerTag,
-          enableNovnc,
-          enableAppium,
         },
       });
       setSelectedId(res.build.id);
@@ -145,7 +138,7 @@ export function EmulatorImagesPage() {
     <div className="page">
       <PageHeader
         title="Emulator images"
-        subtitle="Build custom containers from Google's android-emulator-container-scripts with Zeppole display (port 6080) and Appium (4723), then deploy on the Emulators page."
+        subtitle="Build Google android-emulator-container-scripts images. Deploy adds a ws-scrcpy sidecar for browser display and control."
         actions={
           <Link to="/emulators" className="btn btn--secondary btn--sm">
             Deploy instances
@@ -162,42 +155,27 @@ export function EmulatorImagesPage() {
       {preflight && !preflight.ok ? (
         <div className="callout callout--warn" role="status">
           <strong>Low disk on Docker host.</strong> Emulator image builds need about{" "}
-          {preflight.recommendedFreeGb}GB free under <code>/var/lib/docker</code>. On the host run{" "}
-          <code>df -h</code> and <code>docker system df</code>; free space or{" "}
-          <code>docker system prune -a</code> before starting a build.
-          <pre className="log-preview small" style={{ marginTop: "0.5rem", maxHeight: "6rem" }}>
-            {preflight.detail}
-          </pre>
+          {preflight.recommendedFreeGb}GB free under <code>/var/lib/docker</code>.
         </div>
       ) : null}
 
       {!builderConfigured ? (
         <div className="callout callout--warn" role="status">
           <strong>Image builder is not available.</strong> Start the{" "}
-          <code>google-emulator-builder</code> service and set <code>ZEPPOLE_IMAGE_BUILDER_URL</code> /{" "}
-          <code>ZEPPOLE_IMAGE_BUILDER_TOKEN</code> on the API (same token as the emulator bridge is fine).
-        </div>
-      ) : live && !live.builderReachable && hasActiveBuild ? (
-        <div className="callout callout--warn" role="status">
-          <strong>Cannot reach image builder.</strong> {live.builderDetail ?? "Check google-emulator-builder logs."}
+          <code>google-emulator-builder</code> service.
         </div>
       ) : hasActiveBuild ? (
         <div className="callout callout--neutral" role="status">
-          <strong>
-            {live?.buildingCount ?? 1} build{(live?.buildingCount ?? 1) === 1 ? "" : "s"} in progress.
-          </strong>{" "}
-          Status refreshes automatically every {POLL_MS / 1000}s.
-          {live?.syncedAt ? (
-            <span className="muted"> Last sync {new Date(live.syncedAt).toLocaleTimeString()}.</span>
-          ) : null}
+          <strong>{live?.buildingCount ?? 1} build(s) in progress.</strong> Refreshes every {POLL_MS / 1000}s.
         </div>
       ) : (
         <div className="callout callout--neutral" role="status">
-          Based on{" "}
+          Catalog from{" "}
+          <code>emu-docker list</code> when online —{" "}
           <a href="https://github.com/google/android-emulator-container-scripts" target="_blank" rel="noreferrer">
-            google/android-emulator-container-scripts
+            android-emulator-container-scripts
           </a>
-          . Images use official Google SDK system packages; Zeppole adds browser display + Appium for the control plane.
+          .
         </div>
       )}
 
@@ -211,11 +189,7 @@ export function EmulatorImagesPage() {
             </div>
             <div className="field-group">
               <label htmlFor="img-api">Android API level</label>
-              <select
-                id="img-api"
-                value={apiLevel}
-                onChange={(e) => setApiLevel(Number(e.target.value))}
-              >
+              <select id="img-api" value={apiLevel} onChange={(e) => setApiLevel(Number(e.target.value))}>
                 {(catalog?.apiLevels ?? [{ apiLevel: 34, codename: "U", androidVersion: "14" }]).map((a) => (
                   <option key={a.apiLevel} value={a.apiLevel}>
                     API {a.apiLevel} (Android {a.androidVersion}, {a.codename})
@@ -225,20 +199,13 @@ export function EmulatorImagesPage() {
             </div>
             <div className="field-group">
               <label htmlFor="img-sys">System image</label>
-              <select
-                id="img-sys"
-                value={systemImage}
-                onChange={(e) => setSystemImage(e.target.value)}
-              >
+              <select id="img-sys" value={systemImage} onChange={(e) => setSystemImage(e.target.value)}>
                 {(catalog?.systemImages ?? []).map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.label}
                   </option>
                 ))}
               </select>
-              <span className="field-hint">
-                {catalog?.systemImages.find((s) => s.id === systemImage)?.description}
-              </span>
             </div>
             <div className="field-group">
               <label htmlFor="img-abi">ABI</label>
@@ -280,14 +247,6 @@ export function EmulatorImagesPage() {
                 required
               />
             </div>
-            <label className="checkbox-row">
-              <input type="checkbox" checked={enableNovnc} onChange={(e) => setEnableNovnc(e.target.checked)} />
-              Browser display on port 6080 (adb screencap refresh)
-            </label>
-            <label className="checkbox-row">
-              <input type="checkbox" checked={enableAppium} onChange={(e) => setEnableAppium(e.target.checked)} />
-              Appium server on port 4723
-            </label>
             <button
               type="submit"
               className="btn btn--primary btn--block"
@@ -312,53 +271,44 @@ export function EmulatorImagesPage() {
                 </tr>
               </thead>
               <tbody>
-                {builds.map((b) => {
-                  const isSelected = selected?.id === b.id;
-                  const isBuilding = b.status === "BUILDING";
-                  return (
-                    <tr
-                      key={b.id}
-                      className={isSelected ? "data-table__row--selected" : undefined}
-                      onClick={() => setSelectedId(b.id)}
-                      style={{ cursor: "pointer" }}
-                    >
-                      <td>{b.name}</td>
-                      <td>
-                        {isBuilding ? (
-                          <div className="table-sub">
-                            <span className="live-status__inline-pulse" aria-hidden />
-                            {b.phaseLabel ?? "Building"}
-                            {b.lastLogLine ? (
-                              <div className="muted small live-status__clip">{b.lastLogLine}</div>
-                            ) : null}
-                          </div>
-                        ) : b.phaseLabel ? (
-                          <span className="muted small">{b.phaseLabel}</span>
-                        ) : (
-                          <span className="muted">—</span>
-                        )}
-                      </td>
-                      <td>
-                        <StatusBadge status={b.status} />
-                      </td>
-                      <td>
-                        <code className="key-chip">{b.dockerTag}</code>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {builds.map((b) => (
+                  <tr
+                    key={b.id}
+                    className={selected?.id === b.id ? "data-table__row--selected" : undefined}
+                    onClick={() => setSelectedId(b.id)}
+                    style={{ cursor: "pointer" }}
+                  >
+                    <td>{b.name}</td>
+                    <td>
+                      {b.status === "BUILDING" ? (
+                        <div className="table-sub">
+                          <span className="live-status__inline-pulse" aria-hidden />
+                          {b.phaseLabel ?? "Building"}
+                        </div>
+                      ) : (
+                        <span className="muted small">{b.phaseLabel ?? "—"}</span>
+                      )}
+                    </td>
+                    <td>
+                      <StatusBadge status={b.status} />
+                    </td>
+                    <td>
+                      <code className="key-chip">{b.dockerTag}</code>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
           {builds.length === 0 ? (
-            <EmptyState title="No builds yet" hint="Start a build to create a Zeppole-ready Google aemu image." />
+            <EmptyState title="No builds yet" hint="Start a build, then deploy on the Emulators page." />
           ) : null}
 
           {selected ? (
             <div style={{ marginTop: "1.25rem" }}>
               <LiveStatusPanel
                 title={selected.name}
-                phaseLabel={selected.phaseLabel ?? (selected.status === "BUILDING" ? "Building" : selected.status)}
+                phaseLabel={selected.phaseLabel ?? selected.status}
                 phaseId={selected.phase ?? "unknown"}
                 steps={IMAGE_BUILD_STEPS}
                 status={selected.status}
@@ -370,9 +320,9 @@ export function EmulatorImagesPage() {
                 builderDetail={live?.builderDetail}
                 hint={
                   selected.status === "BUILDING"
-                    ? "Downloading SDK packages and building Docker layers can take 15–45+ minutes on first run."
+                    ? "After platform-tools, docker may run quietly for 10–40 minutes. Heartbeat lines appear every 90s."
                     : selected.status === "SUCCEEDED"
-                      ? `Ready to deploy as ${selected.dockerTag} on the Emulators page (runtime: Google aemu).`
+                      ? `Deploy ${selected.dockerTag} on Emulators — ws-scrcpy opens on port 8000. In the UI choose proxy over adb.`
                       : undefined
                 }
               />

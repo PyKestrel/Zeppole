@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build a Zeppole Google aemu image using emu-docker + optional overlay.
+# Build a Zeppole Google aemu image using emu-docker + minimal boot overlay.
 set -euo pipefail
 
 BUILD_ID="${1:?build id}"
@@ -10,9 +10,7 @@ ABI="${5:-x86_64}"
 CHANNEL="${6:-stable}"
 PAGE_SIZE="${7:-}"
 TAG="${8:?docker tag}"
-ENABLE_NOVNC="${9:-true}"
-ENABLE_APPIUM="${10:-true}"
-LOG_FILE="${11:-/work/builds/${BUILD_ID}/build.log}"
+LOG_FILE="${9:-/work/builds/${BUILD_ID}/build.log}"
 
 mkdir -p "$(dirname "$LOG_FILE")"
 WORKDIR="/work/builds/${BUILD_ID}"
@@ -42,6 +40,7 @@ exec > >(tee -a "$LOG_FILE") 2>&1
 
 echo "[zeppole] build ${BUILD_ID} starting"
 echo "[zeppole] api=${API_LEVEL} codename=${CODENAME} image=${SYSTEM_IMAGE} abi=${ABI} channel=${CHANNEL}"
+echo "[zeppole] Display/control at deploy time uses ws-scrcpy sidecar (not baked into image)."
 
 /opt/zeppole-scripts/check-disk.sh
 
@@ -72,32 +71,45 @@ docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | while read -r re
 done
 echo "[zeppole] running emu-docker create (accept licenses first run)..."
 echo "[zeppole] pattern: ${IMG_PATTERN}"
+echo "[zeppole] After platform-tools: packaging system image + docker build sys-* (often 10-40 min, few log lines)."
+
+heartbeat() {
+  while true; do
+    sleep 90
+    echo "[zeppole] $(date -Is) still in emu-docker / docker build phase..."
+    if [ -d "${BLD}/sys_img" ]; then
+      du -sh "${BLD}/sys_img" 2>/dev/null || true
+    fi
+    docker ps --format 'table {{.Names}}\t{{.Status}}' 2>/dev/null | grep -iE 'build|export' || true
+  done
+}
+heartbeat &
+HEARTBEAT_PID=$!
 if ! yes | "$EMU_DOCKER" create "$CHANNEL" "$IMG_PATTERN" --dest "$BLD" --no-metrics; then
+  kill "$HEARTBEAT_PID" 2>/dev/null || true
   echo "[zeppole] emu-docker create failed"
   exit 1
 fi
+kill "$HEARTBEAT_PID" 2>/dev/null || true
+wait "$HEARTBEAT_PID" 2>/dev/null || true
+echo "[zeppole] emu-docker create finished"
 
 BASE_TAG="zeppole-google-base:${BUILD_ID}"
 phase docker_base
 echo "[zeppole] docker build base ${BASE_TAG}"
 docker build -t "$BASE_TAG" "$BLD"
 
-if [ "$ENABLE_NOVNC" = "true" ] || [ "$ENABLE_APPIUM" = "true" ]; then
-  phase zeppole_overlay
-  echo "[zeppole] applying Zeppole overlay (display + Appium)"
-  docker build -t "$TAG" \
-    -f /opt/zeppole-overlay/Dockerfile \
-    --build-arg GOOGLE_BASE_IMAGE="$BASE_TAG" \
-    /opt/zeppole-overlay
-else
-  docker tag "$BASE_TAG" "$TAG"
-fi
+phase zeppole_overlay
+echo "[zeppole] applying Zeppole boot overlay"
+docker build -t "$TAG" \
+  -f /opt/zeppole-overlay/Dockerfile \
+  --build-arg GOOGLE_BASE_IMAGE="$BASE_TAG" \
+  /opt/zeppole-overlay
 
 phase complete
 echo "[zeppole] build complete: ${TAG}"
 echo "SUCCEEDED" > "${WORKDIR}/status"
 trap - ERR
 
-# Success: drop large workspace tree; tagged images remain on the host
 rm -rf "$BLD"
 echo "[zeppole] Removed workspace ${BLD} (images kept: ${TAG})"

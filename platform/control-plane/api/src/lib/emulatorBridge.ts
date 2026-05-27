@@ -1,5 +1,5 @@
 /**
- * Optional HTTP bridge that runs docker-android containers on a Docker host.
+ * HTTP bridge that deploys Google aemu emulator pods (emulator + ws-scrcpy sidecar) on a Docker host.
  * Set ZEPPOLE_EMULATOR_BRIDGE_URL and ZEPPOLE_EMULATOR_BRIDGE_TOKEN on the API.
  */
 
@@ -74,16 +74,13 @@ export async function emulatorBridgeKvmAvailable(): Promise<boolean> {
 export type BridgeDeployRequest = {
   instanceId: string;
   name: string;
-  emulatorDevice?: string;
   image?: string;
   containerName: string;
-  runtime?: "docker-android" | "google-aemu";
 };
 
 export type BridgeDeployResponse = {
   containerName: string;
   displayUrl: string;
-  appiumUrl: string;
   dockerImage: string;
 };
 
@@ -119,7 +116,6 @@ async function bridgeFetch<T>(path: string, body: unknown, timeoutMs = 120_000):
 }
 
 export async function bridgeDeploy(req: BridgeDeployRequest): Promise<BridgeDeployResponse> {
-  // First deploy may pull a large docker-android image.
   return bridgeFetch<BridgeDeployResponse>("/v1/deploy", req, 600_000);
 }
 

@@ -116,16 +116,17 @@ export const IMAGE_BUILD_STEPS: LiveStep[] = [
   { id: "initializing", label: "Initializing" },
   { id: "sdk_download", label: "SDK & system image" },
   { id: "docker_base", label: "Docker base image" },
-  { id: "zeppole_overlay", label: "Zeppole overlay" },
+  { id: "zeppole_overlay", label: "Zeppole boot overlay" },
   { id: "cleanup", label: "Cleaning up" },
   { id: "complete", label: "Complete" },
 ];
 
 export function deployPhaseLabel(elapsedSeconds: number, dockerImage?: string | null): string {
-  if (elapsedSeconds < 20) return "Creating Docker container";
-  if (elapsedSeconds < 90) {
-    return dockerImage ? `Pulling ${dockerImage} (if needed)` : "Pulling image (if needed)";
+  if (elapsedSeconds < 15) return "Creating Docker network";
+  if (elapsedSeconds < 45) {
+    return dockerImage ? `Starting emulator (${dockerImage})` : "Starting emulator container";
   }
-  if (elapsedSeconds < 240) return "Booting Android emulator";
+  if (elapsedSeconds < 120) return "Starting ws-scrcpy sidecar";
+  if (elapsedSeconds < 300) return "Waiting for ADB + emulator boot";
   return "Still starting — first boot can take several minutes";
 }

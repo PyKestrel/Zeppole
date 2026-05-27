@@ -25,6 +25,8 @@ services:
   emulator-bridge:
     env_file:
       - zeppole.autopilot.env
+    environment:
+      ZEPPOLE_WSSCRCPY_IMAGE: ${ZEPPOLE_WSSCRCPY_IMAGE:-zeppole-ws-scrcpy:latest}
     devices:
       - /dev/kvm:/dev/kvm
 
