@@ -60,6 +60,9 @@ IMG_PATTERN="${CODENAME} ${SYSTEM_IMAGE} ${ABI}"
 if [ -n "$PAGE_SIZE" ]; then
   IMG_PATTERN="${IMG_PATTERN} ${PAGE_SIZE}"
 fi
+# Anchor to end of string so re.match("V google_apis_playstore x86_64") does not
+# also match "V google_apis_playstore x86_64 ps16k" (prefix-match bug in emu-docker).
+IMG_PATTERN="${IMG_PATTERN}\$"
 
 phase sdk_download
 echo "[zeppole] Removing stale sys-${API_LEVEL}-* images from prior failed builds..."

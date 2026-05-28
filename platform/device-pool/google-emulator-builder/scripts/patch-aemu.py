@@ -100,9 +100,49 @@ def patch_emu_docker() -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def patch_emulator_container() -> None:
+    """Fix qemu.short_tag inconsistency for ps16k images.
+
+    The ps16k system image zip's source.properties carries qemu.short_tag='google'
+    (inherited from the google_apis base variant) while SysImgInfo.image_name() uses
+    'playstore' (derived from the path).  The emulator container Dockerfile would
+    then reference e.g. FROM sys-35-google-x64-ps16k which does not exist locally.
+    Override with path-derived values from SysImgInfo when available.
+    """
+    path = AEMU / "emu/containers/emulator_container.py"
+    text = path.read_text(encoding="utf-8")
+
+    old = (
+        '        self.props = system_image_container.image_labels()\n'
+        '        self.props["playstore"] = self.props["qemu.tag"] == "google_apis_playstore"'
+    )
+    new = (
+        '        self.props = system_image_container.image_labels()\n'
+        '        # Zeppole: ps16k image source.properties may carry qemu.short_tag from\n'
+        '        # the base google_apis variant ("google") while the sys image Docker tag\n'
+        '        # was derived from the path ("playstore").  Override with path values.\n'
+        '        if (\n'
+        '            hasattr(system_image_container, "system_image_info")\n'
+        '            and system_image_container.system_image_info is not None\n'
+        '        ):\n'
+        '            _si = system_image_container.system_image_info\n'
+        '            self.props["qemu.short_tag"] = _si.short_tag()\n'
+        '            self.props["qemu.short_abi"] = _si.short_abi()\n'
+        '            self.props["qemu.tag"] = _si.tag\n'
+        '            self.props["qemu.is_16k"] = "true" if _si.is_16k else "false"\n'
+        '        self.props["playstore"] = self.props["qemu.tag"] == "google_apis_playstore"'
+    )
+
+    if old not in text:
+        raise RuntimeError("emulator_container.py: expected props assignment not found")
+    text = text.replace(old, new)
+    path.write_text(text, encoding="utf-8")
+
+
 def main() -> None:
     patch_system_image_container()
     patch_emu_docker()
+    patch_emulator_container()
     print("[zeppole] Applied aemu patches", file=sys.stderr)
 
 
