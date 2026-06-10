@@ -88,7 +88,9 @@ heartbeat() {
 }
 heartbeat &
 HEARTBEAT_PID=$!
-if ! yes | "$EMU_DOCKER" create "$CHANNEL" "$IMG_PATTERN" --dest "$BLD" --no-metrics; then
+# -v: emu-docker logs docker build stream/errors at INFO level; without it the
+# real failure reason of the emulator-layer docker build never reaches this log.
+if ! yes | "$EMU_DOCKER" -v create "$CHANNEL" "$IMG_PATTERN" --dest "$BLD" --no-metrics; then
   kill "$HEARTBEAT_PID" 2>/dev/null || true
   echo "[zeppole] emu-docker create failed"
   exit 1
