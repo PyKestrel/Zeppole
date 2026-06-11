@@ -6,10 +6,12 @@ import {
   syncBuildFromBuilder,
 } from "../../lib/emulatorImageBuildSync.js";
 import {
+  cleanupFailedImageBuild,
   fetchImageBuilderCatalog,
   fetchImageBuilderPreflight,
   imageBuilderConfigured,
   imageBuilderHealth,
+  removeImageBuildWorkspace,
   startImageBuild,
 } from "../../lib/imageBuilder.js";
 import { can } from "../../lib/roles.js";
@@ -193,7 +195,10 @@ export const emulatorImagesPlugin: FastifyPluginAsync = async (app) => {
     "/emulator-images/builds/:buildId",
     {
       onRequest: [app.authenticate],
-      schema: { tags: ["emulator-images"], summary: "Delete build record (does not remove local docker image)" },
+      schema: {
+        tags: ["emulator-images"],
+        summary: "Delete build record and builder-side log/workspace (keeps the built docker image)",
+      },
     },
     async (request, reply) => {
       if (!can(request.user.role, "manage_projects")) {
@@ -202,22 +207,23 @@ export const emulatorImagesPlugin: FastifyPluginAsync = async (app) => {
       }
       const { buildId } = request.params as { buildId: string };
       const row = await app.prisma.emulatorImageBuild.findUnique({ where: { id: buildId } });
-      if (row?.status === "FAILED" && imageBuilderConfigured()) {
-        try {
-          await fetch(
-            `${process.env.ZEPPOLE_IMAGE_BUILDER_URL!.replace(/\/$/, "")}/v1/build/${buildId}/cleanup`,
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${process.env.ZEPPOLE_IMAGE_BUILDER_TOKEN!}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({ dockerTag: row.dockerTag }),
-            },
-          );
-        } catch {
-          /* best-effort */
+      if (!row) {
+        reply.code(404).send({ error: "Not found" });
+        return;
+      }
+      if (row.status === "BUILDING") {
+        reply.code(409).send({ error: "Build is in progress — wait for it to finish before deleting." });
+        return;
+      }
+      if (imageBuilderConfigured()) {
+        if (row.status === "FAILED") {
+          await cleanupFailedImageBuild(buildId, row.dockerTag).catch(() => {
+            /* best-effort */
+          });
         }
+        await removeImageBuildWorkspace(buildId).catch(() => {
+          /* best-effort: builder may be down or workspace already gone */
+        });
       }
       await app.prisma.emulatorImageBuild.delete({ where: { id: buildId } }).catch(() => null);
       reply.code(204).send();

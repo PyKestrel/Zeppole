@@ -154,10 +154,16 @@ app.post<{ Body: BuildJob }>("/v1/build", async (request, reply) => {
   reply.code(202).send({ buildId: job.buildId, status: "BUILDING" });
 });
 
+const BUILD_ID_RE = /^[a-zA-Z0-9-]{8,64}$/;
+
 app.post<{ Params: { buildId: string }; Body: { dockerTag?: string } }>(
   "/v1/build/:buildId/cleanup",
-  async (request) => {
+  async (request, reply) => {
     const { buildId } = request.params;
+    if (!BUILD_ID_RE.test(buildId)) {
+      reply.code(400).send({ error: "Invalid buildId" });
+      return;
+    }
     const dockerTag = request.body?.dockerTag ?? "";
     const logFile = path.join(WORK_ROOT, buildId, "build.log");
     await cleanupFailedBuild(buildId, dockerTag, logFile);
@@ -165,10 +171,30 @@ app.post<{ Params: { buildId: string }; Body: { dockerTag?: string } }>(
   },
 );
 
-app.get<{ Params: { buildId: string } }>("/v1/build/:buildId", async (request) => {
+app.get<{ Params: { buildId: string } }>("/v1/build/:buildId", async (request, reply) => {
   const { buildId } = request.params;
+  if (!BUILD_ID_RE.test(buildId)) {
+    reply.code(400).send({ error: "Invalid buildId" });
+    return;
+  }
   const { status, phase, log } = await readStatus(buildId);
   return { buildId, status, phase, logTail: log.slice(-8000) };
+});
+
+// Remove the build workspace (build.log, status, phase). Does NOT remove the
+// built Docker image — operators may still be running instances from it.
+app.delete<{ Params: { buildId: string } }>("/v1/build/:buildId", async (request, reply) => {
+  const { buildId } = request.params;
+  if (!BUILD_ID_RE.test(buildId)) {
+    reply.code(400).send({ error: "Invalid buildId" });
+    return;
+  }
+  if (running.has(buildId)) {
+    reply.code(409).send({ error: "Build is still running" });
+    return;
+  }
+  await fs.rm(path.join(WORK_ROOT, buildId), { recursive: true, force: true });
+  return { buildId, removed: true };
 });
 
 async function main() {

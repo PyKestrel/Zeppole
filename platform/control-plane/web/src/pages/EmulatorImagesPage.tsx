@@ -107,6 +107,45 @@ export function EmulatorImagesPage() {
     if (row) setCodename(row.codename);
   }, [apiLevel, catalog]);
 
+  async function deleteBuild(buildId: string) {
+    if (!window.confirm("Delete this build record and its log? The built Docker image is kept.")) return;
+    try {
+      await api(`/emulator-images/builds/${buildId}`, { method: "DELETE" });
+      setSelectedId((prev) => (prev === buildId ? null : prev));
+      showToast("Build entry removed.");
+      await loadList();
+    } catch (err) {
+      showToast((err as Error).message, "error");
+    }
+  }
+
+  async function clearFinishedBuilds() {
+    const finished = builds.filter((b) => b.status !== "BUILDING");
+    if (finished.length === 0) return;
+    if (
+      !window.confirm(
+        `Delete ${finished.length} finished build record(s) and their logs? Built Docker images are kept.`,
+      )
+    )
+      return;
+    let failed = 0;
+    for (const b of finished) {
+      try {
+        await api(`/emulator-images/builds/${b.id}`, { method: "DELETE" });
+      } catch {
+        failed += 1;
+      }
+    }
+    setSelectedId(null);
+    showToast(
+      failed === 0
+        ? `Removed ${finished.length} build entr${finished.length === 1 ? "y" : "ies"}.`
+        : `Removed ${finished.length - failed}, ${failed} failed.`,
+      failed === 0 ? "success" : "error",
+    );
+    await loadList();
+  }
+
   async function startBuild(e: FormEvent) {
     e.preventDefault();
     setSubmitting(true);
@@ -259,7 +298,19 @@ export function EmulatorImagesPage() {
         </section>
 
         <section className="card card--elevated flex-grow">
-          <h2 className="panel-heading">Builds</h2>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <h2 className="panel-heading">Builds</h2>
+            {builds.some((b) => b.status !== "BUILDING") ? (
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                onClick={() => void clearFinishedBuilds()}
+                title="Delete all finished build records and logs (Docker images are kept)"
+              >
+                Clear finished
+              </button>
+            ) : null}
+          </div>
           <div className="table-scroll">
             <table className="data-table">
               <thead>
@@ -268,6 +319,9 @@ export function EmulatorImagesPage() {
                   <th scope="col">Progress</th>
                   <th scope="col">Status</th>
                   <th scope="col">Image tag</th>
+                  <th scope="col" className="col-actions">
+                    <span className="sr-only">Actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -294,6 +348,20 @@ export function EmulatorImagesPage() {
                     </td>
                     <td>
                       <code className="key-chip">{b.dockerTag}</code>
+                    </td>
+                    <td className="col-actions">
+                      {b.status !== "BUILDING" ? (
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void deleteBuild(b.id);
+                          }}
+                        >
+                          Delete
+                        </button>
+                      ) : null}
                     </td>
                   </tr>
                 ))}

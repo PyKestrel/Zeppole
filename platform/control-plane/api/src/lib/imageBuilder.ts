@@ -63,6 +63,19 @@ export async function pollImageBuild(buildId: string): Promise<{
   return builderFetch(`/v1/build/${buildId}`);
 }
 
+/** Remove the builder-side workspace (build log etc.). Keeps the Docker image. */
+export async function removeImageBuildWorkspace(buildId: string): Promise<void> {
+  await builderFetch(`/v1/build/${buildId}`, { method: "DELETE" });
+}
+
+/** Cleanup intermediates of a failed build (images + workspace artifacts). */
+export async function cleanupFailedImageBuild(buildId: string, dockerTag: string): Promise<void> {
+  await builderFetch(`/v1/build/${buildId}/cleanup`, {
+    method: "POST",
+    body: JSON.stringify({ dockerTag }),
+  });
+}
+
 export async function imageBuilderHealth(): Promise<{ reachable: boolean; detail?: string }> {
   try {
     const base = process.env.ZEPPOLE_IMAGE_BUILDER_URL!.replace(/\/$/, "");
