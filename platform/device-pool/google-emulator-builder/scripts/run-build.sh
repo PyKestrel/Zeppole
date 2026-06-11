@@ -88,9 +88,14 @@ heartbeat() {
 }
 heartbeat &
 HEARTBEAT_PID=$!
+echo "[zeppole] accepting Android SDK licenses..."
+"$EMU_DOCKER" licenses --accept >/dev/null 2>&1 || true
+# No `yes |` pipe here: under `set -o pipefail` the yes helper dies with SIGPIPE
+# (exit 141) when emu-docker exits, which made SUCCESSFUL runs report failure
+# and triggered cleanup of the freshly built images.
 # -v: emu-docker logs docker build stream/errors at INFO level; without it the
 # real failure reason of the emulator-layer docker build never reaches this log.
-if ! yes | "$EMU_DOCKER" -v create "$CHANNEL" "$IMG_PATTERN" --dest "$BLD" --no-metrics; then
+if ! "$EMU_DOCKER" -v create "$CHANNEL" "$IMG_PATTERN" --dest "$BLD" --no-metrics </dev/null; then
   kill "$HEARTBEAT_PID" 2>/dev/null || true
   echo "[zeppole] emu-docker create failed"
   exit 1
@@ -102,7 +107,9 @@ echo "[zeppole] emu-docker create finished"
 BASE_TAG="zeppole-google-base:${BUILD_ID}"
 phase docker_base
 echo "[zeppole] docker build base ${BASE_TAG}"
-docker build -t "$BASE_TAG" "$BLD"
+# emu-docker writes Dockerfiles into bld/sys_img and bld/emulator (not bld root).
+# The emulator dir is the complete Google image (FROM the sys image built above).
+docker build -t "$BASE_TAG" "${BLD}/emulator"
 
 phase zeppole_overlay
 echo "[zeppole] applying Zeppole boot overlay"
